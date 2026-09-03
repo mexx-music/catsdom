@@ -256,6 +256,94 @@ button:focus-visible {
   margin-bottom: 12px;
 }
 
+.cat-discovery {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  align-items: center;
+  gap: 13px;
+  min-height: 88px;
+  margin-bottom: 12px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 5px 14px rgba(62, 49, 80, 0.09);
+  overflow: hidden;
+}
+
+.cat-photo-frame {
+  position: relative;
+  width: 76px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 3px solid white;
+  border-radius: 15px;
+  background: #f4d6b2;
+  box-shadow: 0 4px 10px rgba(62, 49, 80, 0.18);
+}
+
+.cat-photo-frame img,
+.cat-reveal-dialog img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cat-cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 1px;
+}
+
+.cat-cover span {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(145deg, #8060a5, #654485);
+  font-size: 0.78rem;
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  transition: opacity 420ms ease, transform 480ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+.cat-cover span.revealed {
+  opacity: 0;
+  transform: scale(0.25) rotate(14deg);
+}
+
+.cat-discovery-copy {
+  min-width: 0;
+}
+
+.cat-discovery-copy > span,
+.cat-reveal-copy > span {
+  color: #ff6f61;
+  font-size: 0.67rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.cat-discovery-copy strong {
+  display: block;
+  margin: 2px 0;
+  color: #5e3d74;
+  font-size: 1.04rem;
+}
+
+.cat-discovery-copy small {
+  color: rgba(62, 49, 80, 0.72);
+  font-size: 0.74rem;
+}
+
+.cat-discovery-copy b {
+  color: #ff6f61;
+}
+
 .stat-card {
   display: flex;
   flex-direction: column;
@@ -440,6 +528,82 @@ button:focus-visible {
   backdrop-filter: blur(5px);
 }
 
+.cat-reveal-dialog {
+  width: min(calc(100% - 30px), 540px);
+  max-height: calc(100svh - 30px);
+  border: 0;
+  border-radius: 28px;
+  padding: 0;
+  color: #3e3150;
+  background: #fffaf0;
+  box-shadow: 0 28px 90px rgba(35, 25, 47, 0.42);
+  overflow: hidden;
+  text-align: center;
+}
+
+.cat-reveal-dialog::backdrop {
+  background: rgba(45, 39, 62, 0.68);
+  backdrop-filter: blur(8px);
+}
+
+.cat-reveal-dialog[open] {
+  animation: cat-dialog-enter 420ms cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+
+.cat-reveal-dialog img {
+  height: auto;
+  aspect-ratio: 1;
+  max-height: min(58svh, 520px);
+}
+
+.cat-reveal-copy {
+  padding: 20px 24px 26px;
+}
+
+.cat-reveal-copy h2 {
+  margin: 3px 0 7px;
+  color: #5e3d74;
+  font-size: 2rem;
+}
+
+.cat-reveal-copy p {
+  margin: 0 auto 19px;
+  max-width: 390px;
+  color: rgba(62, 49, 80, 0.76);
+  line-height: 1.45;
+}
+
+.dialog-close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 42px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  color: white;
+  background: rgba(50, 38, 62, 0.46);
+  cursor: pointer;
+  font-size: 1.5rem;
+  line-height: 1;
+  backdrop-filter: blur(5px);
+}
+
+@keyframes cat-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.88);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .game-dialog h2 {
   margin: 0 0 10px;
   font-size: 1.7rem;
@@ -467,10 +631,11 @@ button:focus-visible {
   .game-screen {
     display: grid;
     grid-template-columns: minmax(280px, 360px) min(72vh, 720px, calc(100vw - 430px));
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto auto 1fr;
     grid-template-areas:
       "header board"
       "stats board"
+      "reveal board"
       "message board";
     align-content: center;
     justify-content: center;
@@ -492,6 +657,18 @@ button:focus-visible {
     grid-area: stats;
     align-self: center;
     margin: 0;
+  }
+
+  .cat-discovery {
+    grid-area: reveal;
+    grid-template-columns: 104px 1fr;
+    min-height: 112px;
+    margin: 0;
+    padding: 8px;
+  }
+
+  .cat-photo-frame {
+    width: 96px;
   }
 
   .stat-card {

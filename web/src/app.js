@@ -25,6 +25,11 @@ const elements = {
   dialogHomeButton: document.querySelector("#dialog-home-button"),
   installButton: document.querySelector("#install-button"),
   pwaNote: document.querySelector("#pwa-note"),
+  catCoverPieces: [...document.querySelectorAll("#cat-cover span")],
+  revealCount: document.querySelector("#reveal-count"),
+  catRevealDialog: document.querySelector("#cat-reveal-dialog"),
+  catRevealClose: document.querySelector("#cat-reveal-close"),
+  catRevealContinue: document.querySelector("#cat-reveal-continue"),
 };
 
 const engine = new GameEngine();
@@ -34,6 +39,10 @@ let busy = false;
 let dragGesture = null;
 let suppressNextClick = false;
 let deferredInstallPrompt = null;
+let revealedPieces = 0;
+let catDiscovered = false;
+
+const REVEAL_ORDER = [4, 0, 8, 2, 6, 1, 7, 3, 5];
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -365,6 +374,7 @@ function pulseScore() {
 
 function showStart() {
   elements.dialog.close?.();
+  elements.catRevealDialog.close?.();
   elements.startScreen.hidden = false;
   elements.gameScreen.hidden = true;
 }
@@ -379,9 +389,13 @@ function restartGame() {
   state = engine.newGame();
   selected = null;
   busy = false;
+  revealedPieces = 0;
+  catDiscovered = false;
   if (elements.dialog.open) elements.dialog.close();
+  if (elements.catRevealDialog.open) elements.catRevealDialog.close();
   clearDragHighlights();
   setMessage("Tippe zwei Felder an oder ziehe ein Teil auf seinen Nachbarn");
+  renderCatReveal();
   render();
 }
 
@@ -427,6 +441,36 @@ function render() {
       elements.board.append(button);
     });
   });
+}
+
+function renderCatReveal(previousCount = revealedPieces) {
+  elements.revealCount.textContent = String(revealedPieces);
+  elements.catCoverPieces.forEach((piece, pieceIndex) => {
+    const revealPosition = REVEAL_ORDER.indexOf(pieceIndex);
+    const isRevealed = revealPosition < revealedPieces;
+    const isNew = isRevealed && revealPosition >= previousCount;
+    piece.classList.toggle("revealed", isRevealed);
+    if (isNew && !reducedMotion) {
+      piece.animate(
+        [
+          { filter: "brightness(1)", boxShadow: "inset 0 0 0 0 rgba(255,255,255,0)" },
+          { filter: "brightness(1.55)", boxShadow: "inset 0 0 0 3px white", offset: 0.32 },
+          { filter: "brightness(1)", boxShadow: "inset 0 0 0 0 rgba(255,255,255,0)" },
+        ],
+        { duration: 480, easing: "ease-out" },
+      );
+    }
+  });
+}
+
+function showGameOver() {
+  elements.finalScore.textContent = state.score.toLocaleString("de-DE");
+  elements.dialog.showModal();
+}
+
+function closeCatReveal() {
+  if (elements.catRevealDialog.open) elements.catRevealDialog.close();
+  if (state.movesLeft === 0) showGameOver();
 }
 
 async function handleTileTap(position) {
@@ -509,6 +553,11 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   }
 
   busy = false;
+  const previousRevealCount = revealedPieces;
+  revealedPieces = Math.min(9, revealedPieces + Math.max(1, Math.floor(result.removedTiles / 3)));
+  renderCatReveal(previousRevealCount);
+  const discoveredNow = revealedPieces === 9 && !catDiscovered;
+  if (discoveredNow) catDiscovered = true;
   setMessage(
     result.reshuffled
       ? `+${gainedPoints} Punkte · Brett neu gemischt`
@@ -516,10 +565,10 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   );
   render();
 
-  if (state.movesLeft === 0) {
-    elements.finalScore.textContent = state.score.toLocaleString("de-DE");
-    elements.dialog.showModal();
-  }
+  if (discoveredNow) {
+    await sleep(reducedMotion ? 0 : 520);
+    elements.catRevealDialog.showModal();
+  } else if (state.movesLeft === 0) showGameOver();
 }
 
 function tileAtPoint(clientX, clientY) {
@@ -623,6 +672,8 @@ elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
 elements.playAgainButton.addEventListener("click", restartGame);
 elements.dialogHomeButton.addEventListener("click", showStart);
+elements.catRevealClose.addEventListener("click", closeCatReveal);
+elements.catRevealContinue.addEventListener("click", closeCatReveal);
 
 const isAppleTouchDevice =
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||

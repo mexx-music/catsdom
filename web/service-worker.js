@@ -1,11 +1,12 @@
-const CACHE_NAME = "catsdom-pwa-v6";
+const CACHE_NAME = "catsdom-pwa-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=9",
-  "./src/app.js?v=9",
+  "./styles.css?v=10",
+  "./src/app.js?v=10",
   "./src/game-engine.js",
-  "./manifest.webmanifest?v=9",
+  "./manifest.webmanifest?v=10",
+  "./assets/milo-window-seat.webp",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
