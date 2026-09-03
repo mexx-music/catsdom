@@ -320,10 +320,8 @@ button:focus-visible {
 .board-object {
   position: relative;
   overflow: hidden;
-  border: 3px solid #704b91;
-  border-radius: clamp(10px, 2vw, 17px);
-  background: #9575bd;
-  box-shadow: 0 6px 13px rgba(35, 25, 47, 0.34), inset 0 0 0 2px rgba(244, 225, 255, 0.72);
+  border-radius: clamp(10px, 3vw, 18px);
+  background: #5e86b3;
 }
 
 .board-object img {
@@ -339,24 +337,20 @@ button:focus-visible {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 2px;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
 }
 
 .board-object-cover span {
   display: grid;
   place-items: center;
-  border: 1px solid rgba(91, 57, 122, 0.4);
-  color: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   background:
-    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.28) 0 10%, transparent 11%),
-    radial-gradient(circle at 72% 72%, rgba(255, 255, 255, 0.18) 0 12%, transparent 13%),
-    linear-gradient(145deg, #b493d5, #8160a7);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.34);
-  font-size: clamp(0.75rem, 3vw, 1.3rem);
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.07) 0 12%, transparent 13%),
+    linear-gradient(145deg, #6f94bd, #587fac);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   opacity: 1;
-  transition: opacity 420ms ease, transform 520ms cubic-bezier(0.2, 0.8, 0.25, 1);
+  transition: opacity 460ms ease, transform 520ms cubic-bezier(0.2, 0.8, 0.25, 1);
 }
 
 .board-object-cover span.revealed {
@@ -365,7 +359,7 @@ button:focus-visible {
 }
 
 .board-object-cover span.newly-revealed {
-  animation: blanket-lift 540ms ease-out;
+  animation: blanket-lift 600ms ease-out;
 }
 
 @keyframes blanket-lift {
@@ -384,17 +378,6 @@ button:focus-visible {
     opacity: 0;
     transform: scale(0.12) rotate(13deg);
   }
-}
-
-.collected-photo {
-  position: fixed;
-  z-index: 200;
-  border: 4px solid white;
-  border-radius: 18px;
-  background: url("./assets/milo-window-seat.webp") center / cover no-repeat;
-  box-shadow: 0 18px 45px rgba(35, 25, 47, 0.38);
-  pointer-events: none;
-  will-change: transform, opacity;
 }
 
 .tile {
@@ -428,6 +411,12 @@ button:focus-visible {
   transition: transform 110ms ease, filter 110ms ease;
   will-change: transform, opacity;
   pointer-events: none;
+}
+
+.board.reveal-complete .tile-symbol {
+  opacity: 0;
+  transform: scale(0.72);
+  transition: opacity 720ms ease, transform 720ms cubic-bezier(0.2, 0.8, 0.25, 1);
 }
 
 .tile.object-zone {

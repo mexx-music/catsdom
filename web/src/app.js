@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, GameEngine } from "./game-engine.js?v=15";
+import { BLOCKED_TILE, BOARD_SIZE, GameEngine } from "./game-engine.js?v=16";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -9,9 +9,9 @@ const TILE_SYMBOLS = {
   bell: { symbol: "🔔", name: "Glöckchen" },
 };
 
-const OBJECT_TOP = 3;
-const OBJECT_LEFT = 3;
-const OBJECT_SIZE = 2;
+const OBJECT_TOP = 0;
+const OBJECT_LEFT = 0;
+const OBJECT_SIZE = BOARD_SIZE;
 const OBJECT_CELLS = Array.from({ length: OBJECT_SIZE ** 2 }, (_, index) => ({
   row: OBJECT_TOP + Math.floor(index / OBJECT_SIZE),
   column: OBJECT_LEFT + (index % OBJECT_SIZE),
@@ -29,6 +29,7 @@ const elements = {
   message: document.querySelector("#message"),
   dialog: document.querySelector("#game-over-dialog"),
   finalScore: document.querySelector("#final-score"),
+  finalMoves: document.querySelector("#final-moves"),
   playAgainButton: document.querySelector("#play-again-button"),
   dialogHomeButton: document.querySelector("#dialog-home-button"),
   installButton: document.querySelector("#install-button"),
@@ -417,7 +418,7 @@ function restartGame() {
   objectCollected = false;
   if (elements.dialog.open) elements.dialog.close();
   clearDragHighlights();
-  setMessage("Entferne die Steine über Milos verstecktem Bild");
+  setMessage("Lege Milos Bild Feld für Feld frei");
   renderObjectProgress();
   render();
 }
@@ -428,11 +429,12 @@ function setMessage(text) {
 
 function render() {
   elements.score.textContent = state.score.toLocaleString("de-DE");
-  elements.moves.textContent = state.movesLeft;
+  elements.moves.textContent = state.moves;
   elements.board.setAttribute("aria-busy", String(busy));
+  elements.board.classList.toggle("reveal-complete", objectCollected);
   elements.board.replaceChildren();
 
-  if (!objectCollected) {
+  {
     const objectShell = document.createElement("div");
     objectShell.className = "board-object-shell";
     objectShell.setAttribute("aria-hidden", "true");
@@ -448,7 +450,6 @@ function render() {
     cover.className = "board-object-cover";
     for (let pieceIndex = 0; pieceIndex < OBJECT_SIZE ** 2; pieceIndex += 1) {
       const piece = document.createElement("span");
-      piece.textContent = "🐾";
       if (revealedObjectPieces.has(pieceIndex)) piece.classList.add("revealed");
       if (newlyRevealedObjectPieces.has(pieceIndex)) piece.classList.add("newly-revealed");
       cover.append(piece);
@@ -465,14 +466,13 @@ function render() {
       button.type = "button";
       button.className = tile ? `tile tile-${tile}` : "tile empty";
       button.setAttribute("role", "gridcell");
-      button.disabled = busy || tile === null || tile === BLOCKED_TILE || state.movesLeft === 0;
+      button.disabled = busy || objectCollected || tile === null || tile === BLOCKED_TILE;
       button.dataset.row = String(rowIndex);
       button.dataset.column = String(columnIndex);
 
       const objectRow = rowIndex - OBJECT_TOP;
       const objectColumn = columnIndex - OBJECT_LEFT;
       if (
-        !objectCollected &&
         objectRow >= 0 &&
         objectRow < OBJECT_SIZE &&
         objectColumn >= 0 &&
@@ -513,7 +513,9 @@ function render() {
 }
 
 function renderObjectProgress() {
-  elements.revealCount.textContent = objectCollected ? "✓" : `${revealedObjectPieces.size}/4`;
+  elements.revealCount.textContent = objectCollected
+    ? "✓"
+    : `${revealedObjectPieces.size}/${OBJECT_CELLS.length}`;
 }
 
 function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
@@ -534,57 +536,40 @@ function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
 
 function showGameOver() {
   elements.finalScore.textContent = state.score.toLocaleString("de-DE");
+  elements.finalMoves.textContent = state.moves.toLocaleString("de-DE");
   elements.dialog.showModal();
 }
 
-async function collectRevealedObject() {
-  const firstTile = tileElement({ row: OBJECT_TOP, column: OBJECT_LEFT });
-  const lastTile = tileElement({
-    row: OBJECT_TOP + OBJECT_SIZE - 1,
-    column: OBJECT_LEFT + OBJECT_SIZE - 1,
-  });
-  if (!firstTile || !lastTile) return;
-
-  const firstRect = firstTile.getBoundingClientRect();
-  const lastRect = lastTile.getBoundingClientRect();
-  const flyer = document.createElement("div");
-  flyer.className = "collected-photo";
-  flyer.style.left = `${firstRect.left}px`;
-  flyer.style.top = `${firstRect.top}px`;
-  flyer.style.width = `${lastRect.right - firstRect.left}px`;
-  flyer.style.height = `${lastRect.bottom - firstRect.top}px`;
-  document.body.append(flyer);
-
+async function completeCatReveal() {
   objectCollected = true;
   renderObjectProgress();
-  render();
-  setMessage("Milo gefunden! 🐾");
+  elements.board.classList.add("reveal-complete");
+  elements.board.querySelectorAll(".tile").forEach((tile) => {
+    tile.disabled = true;
+  });
+  setMessage(`Milo ist frei – geschafft in ${state.moves} Zügen! 🐾`);
 
   if (reducedMotion) {
-    flyer.remove();
+    showGameOver();
     return;
   }
 
-  const travelX = window.innerWidth - firstRect.left + firstRect.width;
-  const travelY = -firstRect.top - (lastRect.bottom - firstRect.top) * 1.1;
   await waitForAnimation(
-    flyer.animate(
+    elements.board.animate(
       [
-        { opacity: 1, transform: "translate3d(0,0,0) scale(1) rotate(0deg)" },
-        { opacity: 1, transform: "translate3d(0,0,0) scale(1.14) rotate(-3deg)", offset: 0.2 },
-        {
-          opacity: 0.82,
-          transform: `translate3d(${travelX}px,${travelY}px,0) scale(.72) rotate(14deg)`,
-        },
+        { transform: "scale(1)" },
+        { transform: "scale(1.035)", offset: 0.38 },
+        { transform: "scale(1)" },
       ],
-      { duration: 1550, easing: "cubic-bezier(.22,.62,.28,1)", fill: "forwards" },
+      { duration: 900, easing: "cubic-bezier(.22,.62,.28,1)" },
     ),
   );
-  flyer.remove();
+  await sleep(900);
+  showGameOver();
 }
 
 async function handleTileTap(position) {
-  if (busy || state.movesLeft === 0) return;
+  if (busy || objectCollected) return;
 
   if (!selected) {
     selected = position;
@@ -674,9 +659,8 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
 
   if (discoveredNow) {
     await sleep(reducedMotion ? 0 : 380);
-    await collectRevealedObject();
-    if (state.movesLeft === 0) showGameOver();
-  } else if (state.movesLeft === 0) showGameOver();
+    await completeCatReveal();
+  }
 }
 
 function tileAtPoint(clientX, clientY) {
@@ -703,7 +687,7 @@ function clearDragHighlights() {
 }
 
 elements.board.addEventListener("pointerdown", (event) => {
-  if (busy || state.movesLeft === 0 || event.button > 0) return;
+  if (busy || objectCollected || event.button > 0) return;
   const target = tileAtPoint(event.clientX, event.clientY);
   if (!target) return;
 

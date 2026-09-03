@@ -12,10 +12,10 @@
       content="Catsdom Pfoten-Puzzle – ein eigenständiger Katzen-Puzzle-Prototyp."
     />
     <title>Catsdom – Pfoten-Puzzle</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=15" />
+    <link rel="manifest" href="./manifest.webmanifest?v=16" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css?v=15" />
+    <link rel="stylesheet" href="./styles.css?v=16" />
   </head>
   <body>
     <main class="app-shell">
@@ -37,7 +37,7 @@
           Als App installieren
         </button>
         <p id="pwa-note" class="pwa-note" hidden></p>
-        <p class="game-facts">25 Züge · 6 Symboltypen · endlose Kombinationen</p>
+        <p class="game-facts">64 Bildfelder · 6 Symboltypen · kein Zuglimit</p>
       </section>
 
       <section id="game-screen" class="screen game-screen" aria-labelledby="game-title" hidden>
@@ -57,11 +57,11 @@
           </div>
           <div class="stat-card">
             <span>Züge</span>
-            <strong id="moves">25</strong>
+            <strong id="moves">0</strong>
           </div>
           <div class="stat-card">
             <span>Milo</span>
-            <strong id="reveal-count">0/4</strong>
+            <strong id="reveal-count">0/64</strong>
           </div>
         </div>
 
@@ -80,8 +80,11 @@
     </main>
 
     <dialog id="game-over-dialog" class="game-dialog">
-      <h2>Runde beendet!</h2>
-      <p>Du hast <strong id="final-score">0</strong> Punkte gesammelt.</p>
+      <h2>Milo ist frei! 🐾</h2>
+      <p>
+        Du hast das Bild in <strong id="final-moves">0</strong> Zügen freigelegt und
+        <strong id="final-score">0</strong> Punkte gesammelt.
+      </p>
       <div class="dialog-actions">
         <button id="dialog-home-button" class="text-button" type="button">Zum Start</button>
         <button id="play-again-button" class="primary-button compact" type="button">
@@ -90,6 +93,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=15"></script>
+    <script type="module" src="./src/app.js?v=16"></script>
   </body>
 </html>

@@ -1,5 +1,4 @@
 export const BOARD_SIZE = 8;
-export const STARTING_MOVES = 25;
 export const TILE_TYPES = ["cat", "paw", "fish", "yarn", "mouse", "bell"];
 export const BLOCKED_TILE = "blocked";
 
@@ -15,19 +14,18 @@ export class GameEngine {
     for (let attempt = 0; attempt < 200; attempt += 1) {
       const board = this.createBoardWithoutMatches(blockedPositions);
       if (this.hasPossibleMove(board)) {
-        return { board, score: 0, movesLeft: STARTING_MOVES };
+        return { board, score: 0, moves: 0 };
       }
     }
     return {
       board: this.createBoardWithoutMatches(blockedPositions),
       score: 0,
-      movesLeft: STARTING_MOVES,
+      moves: 0,
     };
   }
 
   trySwap(state, first, second) {
     if (
-      state.movesLeft <= 0 ||
       !this.isInside(state.board, first) ||
       !this.isInside(state.board, second) ||
       state.board[first.row][first.column] === BLOCKED_TILE ||
@@ -44,8 +42,8 @@ export class GameEngine {
       return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
     }
 
-    const movesLeft = state.movesLeft - 1;
-    const frames = [{ board: copyBoard(board), score: state.score, movesLeft }];
+    const moves = state.moves + 1;
+    const frames = [{ board: copyBoard(board), score: state.score, moves }];
     let score = state.score;
     let combo = 0;
     let removedTiles = 0;
@@ -59,10 +57,10 @@ export class GameEngine {
         const [row, column] = key.split(",").map(Number);
         board[row][column] = null;
       }
-      frames.push({ board: copyBoard(board), score, movesLeft });
+      frames.push({ board: copyBoard(board), score, moves });
 
       this.collapseAndRefill(board);
-      frames.push({ board: copyBoard(board), score, movesLeft });
+      frames.push({ board: copyBoard(board), score, moves });
       matches = this.findMatches(board);
     }
 
@@ -70,7 +68,7 @@ export class GameEngine {
     if (!this.hasPossibleMove(board)) {
       reshuffled = true;
       const freshBoard = this.createBoardWithoutMatches();
-      frames.push({ board: freshBoard, score, movesLeft });
+      frames.push({ board: freshBoard, score, moves });
     }
 
     return { accepted: true, frames, removedTiles, reshuffled };

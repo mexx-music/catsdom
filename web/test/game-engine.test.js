@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BLOCKED_TILE, GameEngine, STARTING_MOVES, TILE_TYPES } from "../src/game-engine.js";
+import { BLOCKED_TILE, GameEngine, TILE_TYPES } from "../src/game-engine.js";
 
 function seededRandom(seed = 7) {
   let value = seed >>> 0;
@@ -27,24 +27,24 @@ test("new games start with a clean, playable 8 by 8 board", () => {
     assert.ok(state.board.every((row) => row.length === 8));
     assert.equal(engine.findMatches(state.board).size, 0);
     assert.equal(engine.hasPossibleMove(state.board), true);
-    assert.equal(state.movesLeft, STARTING_MOVES);
+    assert.equal(state.moves, 0);
     assert.equal(state.score, 0);
   }
 });
 
-test("a productive adjacent swap clears tiles, scores and costs one move", () => {
+test("a productive adjacent swap clears tiles, scores and counts one move", () => {
   const engine = new GameEngine(seededRandom());
   const board = cleanPattern();
   board[0][0] = "cat";
   board[0][1] = "paw";
   board[0][2] = "cat";
   board[1][1] = "cat";
-  const state = { board, score: 0, movesLeft: 25 };
+  const state = { board, score: 0, moves: 0 };
 
   const result = engine.trySwap(state, { row: 0, column: 1 }, { row: 1, column: 1 });
 
   assert.equal(result.accepted, true);
-  assert.equal(result.frames.at(-1).movesLeft, 24);
+  assert.equal(result.frames.at(-1).moves, 1);
   assert.ok(result.frames.at(-1).score >= 30);
   assert.ok(result.removedTiles >= 3);
   assert.equal(engine.findMatches(result.frames.at(-1).board).size, 0);
@@ -52,7 +52,7 @@ test("a productive adjacent swap clears tiles, scores and costs one move", () =>
 
 test("invalid swaps leave the state untouched", () => {
   const engine = new GameEngine(seededRandom());
-  const state = { board: cleanPattern(), score: 0, movesLeft: 25 };
+  const state = { board: cleanPattern(), score: 0, moves: 0 };
 
   const result = engine.trySwap(state, { row: 0, column: 0 }, { row: 3, column: 3 });
 
