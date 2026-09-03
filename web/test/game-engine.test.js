@@ -134,6 +134,23 @@ test("tapping a mini paw bomb detonates it in place", () => {
   }
 });
 
+test("adjacent paw bombs create a double blast", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[3][3] = PAW_BOMB;
+  board[3][4] = PAW_BOMB;
+  const state = { board, score: 0, moves: 2 };
+
+  const result = engine.activatePawBombAt(state, { row: 3, column: 3 });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.specialCombo, true);
+  assert.equal(result.detonatedSpecials, 2);
+  assert.equal(result.blastCenters.length, 2);
+  assert.ok(result.removedTiles >= 12);
+  assert.ok(result.frames.at(-1).score >= 360);
+});
+
 test("blocked object cells split gravity and cannot be swapped", () => {
   const engine = new GameEngine(seededRandom());
   const blocked = [

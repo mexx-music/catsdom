@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=19";
+import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=21";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -231,7 +231,7 @@ async function animateDirectDragRelease(gesture, completeSwap) {
   resetDragStyles(gesture);
 }
 
-function spawnParticles(tile) {
+function spawnParticles(tile, particleCount = 8) {
   if (reducedMotion) return;
   const rect = tile.getBoundingClientRect();
   const tileStyle = getComputedStyle(tile);
@@ -247,8 +247,8 @@ function spawnParticles(tile) {
   document.body.append(ring);
   ring.addEventListener("animationend", () => ring.remove(), { once: true });
 
-  for (let index = 0; index < 8; index += 1) {
-    const angle = (Math.PI * 2 * index) / 8 + Math.random() * 0.28;
+  for (let index = 0; index < particleCount; index += 1) {
+    const angle = (Math.PI * 2 * index) / particleCount + Math.random() * 0.28;
     const distance = rect.width * (0.78 + Math.random() * 0.42);
     const particle = document.createElement("span");
     particle.className = `particle ${index % 2 === 0 ? "particle-shard" : "particle-spark"}`;
@@ -268,7 +268,7 @@ function spawnParticles(tile) {
   }
 }
 
-async function animateClears(beforeBoard, clearedBoard) {
+async function animateClears(beforeBoard, clearedBoard, particleCount = 8) {
   if (reducedMotion) return;
   const animations = [];
   beforeBoard.forEach((row, rowIndex) => {
@@ -276,7 +276,7 @@ async function animateClears(beforeBoard, clearedBoard) {
       if (tile === null || clearedBoard[rowIndex][columnIndex] !== null) return;
       const element = tileElement({ row: rowIndex, column: columnIndex });
       if (!element) return;
-      spawnParticles(element);
+      spawnParticles(element, particleCount);
       animations.push(
         waitForAnimation(
           tileVisual(element).animate(
@@ -306,6 +306,108 @@ async function animateClears(beforeBoard, clearedBoard) {
     { duration: 220, easing: "ease-out" },
   );
   await Promise.all([...animations, waitForAnimation(boardBounce)]);
+}
+
+async function animatePawBombBlast(blastCenters, isCombo) {
+  const points = blastCenters
+    .map((position) => tileElement(position))
+    .filter(Boolean)
+    .map((tile) => {
+      const rect = tile.getBoundingClientRect();
+      return {
+        tile,
+        visual: tileVisual(tile),
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        size: rect.width,
+      };
+    });
+  if (points.length === 0) return;
+
+  setMessage(isCombo ? "Doppel-Pfoten-Krawall lädt …" : "Pfotenbombe lädt …");
+  if (reducedMotion) {
+    await sleep(180);
+    return;
+  }
+
+  const chargeDuration = isCombo ? 720 : 540;
+  await Promise.all(
+    points.map(({ visual }, index) =>
+      waitForAnimation(
+        visual.animate(
+          [
+            { transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
+            {
+              transform: `scale(${isCombo ? 1.42 : 1.28}) rotate(${index % 2 ? 10 : -10}deg)`,
+              filter: "brightness(1.65)",
+              offset: 0.72,
+            },
+            { transform: "scale(1.12) rotate(0deg)", filter: "brightness(1.3)" },
+          ],
+          { duration: chargeDuration, easing: "cubic-bezier(.2,.72,.25,1)" },
+        ),
+      ),
+    ),
+  );
+
+  const effects = points.map((point) => ({ ...point, comboCore: false }));
+  if (isCombo && points.length > 1) {
+    effects.push({
+      x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+      y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+      size: Math.max(...points.map((point) => point.size)),
+      comboCore: true,
+    });
+  }
+
+  const blastAnimations = effects.map((effect, index) => {
+    const blast = document.createElement("div");
+    blast.className = `paw-blast${effect.comboCore ? " paw-blast-combo" : ""}`;
+    blast.style.left = `${effect.x}px`;
+    blast.style.top = `${effect.y}px`;
+    const diameter = effect.size * (effect.comboCore ? 6.1 : isCombo ? 4.2 : 3.35);
+    blast.style.width = `${diameter}px`;
+    blast.style.height = `${diameter}px`;
+    blast.innerHTML = '<span class="paw-blast-ring"></span><span class="paw-blast-core">🐾</span>';
+    document.body.append(blast);
+
+    const animation = blast.animate(
+      [
+        { opacity: 0, transform: "translate(-50%,-50%) scale(.12) rotate(-18deg)" },
+        { opacity: 1, transform: "translate(-50%,-50%) scale(.46) rotate(5deg)", offset: 0.2 },
+        { opacity: 0.92, transform: "translate(-50%,-50%) scale(1) rotate(0deg)", offset: 0.7 },
+        { opacity: 0, transform: "translate(-50%,-50%) scale(1.18) rotate(8deg)" },
+      ],
+      {
+        duration: effect.comboCore ? 1050 : isCombo ? 920 : 760,
+        delay: index * 45,
+        easing: "cubic-bezier(.16,.72,.22,1)",
+        fill: "forwards",
+      },
+    );
+    animation.finished.finally(() => blast.remove());
+    return waitForAnimation(animation);
+  });
+
+  const shake = elements.board.animate(
+    isCombo
+      ? [
+          { transform: "translate3d(0,0,0) rotate(0deg)" },
+          { transform: "translate3d(-8px,3px,0) rotate(-0.6deg)" },
+          { transform: "translate3d(8px,-3px,0) rotate(0.6deg)" },
+          { transform: "translate3d(-5px,2px,0) rotate(-0.35deg)" },
+          { transform: "translate3d(0,0,0) rotate(0deg)" },
+        ]
+      : [
+          { transform: "translate3d(0,0,0)" },
+          { transform: "translate3d(-4px,2px,0)" },
+          { transform: "translate3d(4px,-2px,0)" },
+          { transform: "translate3d(0,0,0)" },
+        ],
+    { duration: isCombo ? 620 : 420, delay: 130, easing: "ease-out" },
+  );
+
+  await Promise.all([...blastAnimations, waitForAnimation(shake)]);
 }
 
 async function animateFall(clearedBoard) {
@@ -645,6 +747,9 @@ async function performBombTap(position) {
 async function playAcceptedResult(result, gainedPoints) {
   state = result.frames[0];
   render();
+  if (result.specialActivated) {
+    await animatePawBombBlast(result.blastCenters ?? [], result.specialCombo);
+  }
   let previousBoard = state.board;
   for (let index = 1; index < result.frames.length; index += 1) {
     const frame = result.frames[index];
@@ -652,7 +757,8 @@ async function playAcceptedResult(result, gainedPoints) {
     const previousHasGap = previousBoard.some((row) => row.some((tile) => tile === null));
 
     if (hasGap) {
-      await animateClears(previousBoard, frame.board);
+      const isInitialBombClear = result.specialActivated && index === 1;
+      await animateClears(previousBoard, frame.board, isInitialBombClear ? 4 : 8);
       revealObjectUnderClearedTiles(previousBoard, frame.board);
       state = frame;
       render();
@@ -673,7 +779,11 @@ async function playAcceptedResult(result, gainedPoints) {
   busy = false;
   const discoveredNow = revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected;
   if (result.specialActivated) {
-    setMessage(`Pfotenbombe! ${result.removedTiles} Felder getroffen · +${gainedPoints}`);
+    setMessage(
+      result.specialCombo
+        ? `Doppel-Pfoten-Krawall! ${result.removedTiles} Felder · +${gainedPoints}`
+        : `Pfotenbombe! ${result.removedTiles} Felder getroffen · +${gainedPoints}`,
+    );
   } else if (result.createdSpecials > 0) {
     setMessage("Mini-Pfotenbombe erzeugt – ziehe sie auf ein Nachbarfeld!");
   } else {

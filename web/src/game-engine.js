@@ -207,7 +207,12 @@ export class GameEngine {
       }
     }
 
-    let score = state.score + cleared.size * 15;
+    const blastCenters = [...detonated].map((key) => {
+      const [row, column] = key.split(",").map(Number);
+      return { row, column };
+    });
+    const specialCombo = blastCenters.length > 1;
+    let score = state.score + cleared.size * (specialCombo ? 30 : 15);
     frames.push({ board: copyBoard(board), score, moves });
     this.collapseAndRefill(board);
     frames.push({ board: copyBoard(board), score, moves });
@@ -227,6 +232,9 @@ export class GameEngine {
       reshuffled,
       createdSpecials: resolution.createdSpecials,
       specialActivated: true,
+      specialCombo,
+      detonatedSpecials: blastCenters.length,
+      blastCenters,
     };
   }
 
