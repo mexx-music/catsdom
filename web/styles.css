@@ -361,7 +361,67 @@ button:focus-visible {
   gap: 12px;
 }
 
-@media (max-height: 690px) and (orientation: landscape) {
+@media (orientation: landscape) and (min-width: 768px) {
+  .app-shell {
+    width: 100%;
+    max-width: 1240px;
+    padding: max(18px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  }
+
+  .game-screen {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) min(72vh, 720px, calc(100vw - 430px));
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "header board"
+      "stats board"
+      "message board";
+    align-content: center;
+    justify-content: center;
+    column-gap: clamp(28px, 4.5vw, 64px);
+    row-gap: 22px;
+  }
+
+  .game-header {
+    grid-area: header;
+    align-self: end;
+    margin: 0;
+  }
+
+  .game-header h1 {
+    font-size: clamp(1.25rem, 2.4vw, 1.8rem);
+  }
+
+  .stats {
+    grid-area: stats;
+    align-self: center;
+    margin: 0;
+  }
+
+  .stat-card {
+    min-height: 92px;
+    justify-content: center;
+  }
+
+  .stat-card strong {
+    font-size: 1.9rem;
+  }
+
+  .board {
+    grid-area: board;
+    align-self: center;
+  }
+
+  .message {
+    grid-area: message;
+    align-self: start;
+    margin: 0 12px;
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 767px) and (max-height: 690px) and (orientation: landscape) {
   .app-shell {
     width: min(100%, 540px);
   }
