@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, BOARD_SIZE, GameEngine } from "./game-engine.js?v=16";
+import { BLOCKED_TILE, BOARD_SIZE, GameEngine } from "./game-engine.js?v=17";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -347,7 +347,7 @@ async function animateFall(clearedBoard) {
             tileVisual(element).animate(
               [
                 {
-                  opacity: isNewTile ? 0.4 : 1,
+                  opacity: 1,
                   transform: `translate3d(0,${-distance * rowDistance}px,0) scale(${isNewTile ? 0.88 : 1})`,
                 },
                 { opacity: 1, transform: "translate3d(0,5px,0) scale(1.018)", offset: 0.88 },
@@ -375,7 +375,7 @@ async function animateReshuffle() {
       waitForAnimation(
         tile.animate(
           [
-            { opacity: 0, transform: "scale(.65) rotate(-8deg)" },
+            { opacity: 1, transform: "scale(.78) rotate(-8deg)" },
             { opacity: 1, transform: "scale(1) rotate(0deg)" },
           ],
           { duration: 210, delay: (index % 8) * 10, easing: "cubic-bezier(.34,1.56,.64,1)" },
