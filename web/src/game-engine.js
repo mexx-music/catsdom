@@ -2,9 +2,11 @@ export const BOARD_SIZE = 8;
 export const TILE_TYPES = ["cat", "paw", "fish", "yarn", "mouse", "bell"];
 export const BLOCKED_TILE = "blocked";
 export const PAW_BOMB = "paw-bomb";
+export const BIG_PAW_BOMB = "big-paw-bomb";
 
 const copyBoard = (board) => board.map((row) => [...row]);
 const positionKey = ({ row, column }) => `${row},${column}`;
+const isPawBomb = (tile) => tile === PAW_BOMB || tile === BIG_PAW_BOMB;
 
 export class GameEngine {
   constructor(random = Math.random) {
@@ -41,7 +43,7 @@ export class GameEngine {
     const secondTile = board[second.row][second.column];
     this.swap(board, first, second);
 
-    if (firstTile === PAW_BOMB || secondTile === PAW_BOMB) {
+    if (isPawBomb(firstTile) || isPawBomb(secondTile)) {
       return this.activatePawBombSwap(state, board, first, second, firstTile, secondTile);
     }
 
@@ -53,7 +55,7 @@ export class GameEngine {
     const moves = state.moves + 1;
     const frames = [{ board: copyBoard(board), score: state.score, moves }];
     const resolution = this.resolveMatches(board, state.score, moves, frames, [second, first]);
-    const { score, removedTiles, createdSpecials } = resolution;
+    const { score, removedTiles, createdSpecials, createdBigSpecials } = resolution;
 
     let reshuffled = false;
     if (!this.hasPossibleMove(board)) {
@@ -68,6 +70,7 @@ export class GameEngine {
       removedTiles,
       reshuffled,
       createdSpecials,
+      createdBigSpecials,
       specialActivated: false,
     };
   }
@@ -130,18 +133,24 @@ export class GameEngine {
     let combo = 0;
     let removedTiles = 0;
     let createdSpecials = 0;
+    let createdBigSpecials = 0;
 
     while (groups.length > 0 && combo < 100) {
       combo += 1;
       const matches = new Set(groups.flatMap((group) => group.map(positionKey)));
       const bombSpawns = new Map();
 
-      for (const group of groups.filter((candidate) => candidate.length === 4)) {
+      for (const group of groups.filter(
+        (candidate) => candidate.length === 4 || candidate.length === 5,
+      )) {
         const preferred = preferredBombPositions.find((position) =>
           group.some((candidate) => positionKey(candidate) === positionKey(position)),
         );
         const spawn = preferred ?? group[Math.floor((group.length - 1) / 2)];
-        bombSpawns.set(positionKey(spawn), spawn);
+        bombSpawns.set(positionKey(spawn), {
+          position: spawn,
+          type: group.length === 5 ? BIG_PAW_BOMB : PAW_BOMB,
+        });
       }
 
       score += matches.size * 10 * combo;
@@ -149,12 +158,15 @@ export class GameEngine {
         const [row, column] = key.split(",").map(Number);
         board[row][column] = null;
       }
-      for (const [key, spawn] of bombSpawns) {
-        board[spawn.row][spawn.column] = PAW_BOMB;
+      for (const [key, bomb] of bombSpawns) {
+        board[bomb.position.row][bomb.position.column] = bomb.type;
         matches.delete(key);
       }
       removedTiles += matches.size;
       createdSpecials += bombSpawns.size;
+      createdBigSpecials += [...bombSpawns.values()].filter(
+        (bomb) => bomb.type === BIG_PAW_BOMB,
+      ).length;
       frames.push({ board: copyBoard(board), score, moves });
 
       this.collapseAndRefill(board);
@@ -163,20 +175,23 @@ export class GameEngine {
       preferredBombPositions = [];
     }
 
-    return { score, removedTiles, createdSpecials };
+    return { score, removedTiles, createdSpecials, createdBigSpecials };
   }
 
   activatePawBombAt(state, position) {
-    if (!this.isInside(state.board, position) || state.board[position.row][position.column] !== PAW_BOMB) {
+    if (
+      !this.isInside(state.board, position) ||
+      !isPawBomb(state.board[position.row][position.column])
+    ) {
       return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
     }
     return this.detonatePawBombs(state, copyBoard(state.board), [position]);
   }
 
   activatePawBombSwap(state, board, first, second, firstTile, secondTile) {
-    const centers = [firstTile === PAW_BOMB ? second : first];
-    if (firstTile === PAW_BOMB && secondTile === PAW_BOMB) {
-      centers.push(secondTile === PAW_BOMB ? first : second);
+    const centers = [isPawBomb(firstTile) ? second : first];
+    if (isPawBomb(firstTile) && isPawBomb(secondTile)) {
+      centers.push(isPawBomb(secondTile) ? first : second);
     }
     return this.detonatePawBombs(state, board, centers);
   }
@@ -184,22 +199,26 @@ export class GameEngine {
   detonatePawBombs(state, board, centers) {
     const moves = state.moves + 1;
     const frames = [{ board: copyBoard(board), score: state.score, moves }];
-    const queue = [...centers];
-    const detonated = new Set();
+    const queue = centers.map((position) => ({
+      position,
+      type: board[position.row][position.column],
+    }));
+    const detonated = new Map();
     const cleared = new Set();
 
     while (queue.length > 0) {
-      const center = queue.shift();
+      const { position: center, type } = queue.shift();
       const centerKey = positionKey(center);
       if (detonated.has(centerKey)) continue;
-      detonated.add(centerKey);
+      detonated.set(centerKey, type);
+      const radius = type === BIG_PAW_BOMB ? 2 : 1;
 
-      for (let row = center.row - 1; row <= center.row + 1; row += 1) {
-        for (let column = center.column - 1; column <= center.column + 1; column += 1) {
+      for (let row = center.row - radius; row <= center.row + radius; row += 1) {
+        for (let column = center.column - radius; column <= center.column + radius; column += 1) {
           const position = { row, column };
           if (!this.isInside(board, position) || board[row][column] === BLOCKED_TILE) continue;
-          if (board[row][column] === PAW_BOMB && !detonated.has(positionKey(position))) {
-            queue.push(position);
+          if (isPawBomb(board[row][column]) && !detonated.has(positionKey(position))) {
+            queue.push({ position, type: board[row][column] });
           }
           if (board[row][column] !== null) cleared.add(positionKey(position));
           board[row][column] = null;
@@ -207,9 +226,14 @@ export class GameEngine {
       }
     }
 
-    const blastCenters = [...detonated].map((key) => {
+    const blastCenters = [...detonated].map(([key, type]) => {
       const [row, column] = key.split(",").map(Number);
-      return { row, column };
+      return {
+        row,
+        column,
+        type,
+        power: type === BIG_PAW_BOMB ? 2 : 1,
+      };
     });
     const specialCombo = blastCenters.length > 1;
     let score = state.score + cleared.size * (specialCombo ? 30 : 15);
@@ -231,6 +255,7 @@ export class GameEngine {
       removedTiles: cleared.size + resolution.removedTiles,
       reshuffled,
       createdSpecials: resolution.createdSpecials,
+      createdBigSpecials: resolution.createdBigSpecials,
       specialActivated: true,
       specialCombo,
       detonatedSpecials: blastCenters.length,
@@ -257,8 +282,8 @@ export class GameEngine {
             continue;
           }
           if (
-            candidate[current.row][current.column] === PAW_BOMB ||
-            candidate[neighbour.row][neighbour.column] === PAW_BOMB
+            isPawBomb(candidate[current.row][current.column]) ||
+            isPawBomb(candidate[neighbour.row][neighbour.column])
           ) {
             return true;
           }

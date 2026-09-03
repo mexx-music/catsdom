@@ -133,6 +133,11 @@ button:focus-visible {
   background: var(--tile-color);
 }
 
+.tile-big-paw-bomb {
+  --tile-color: #c15af2;
+  background: var(--tile-color);
+}
+
 .start-screen h1 {
   margin: 0;
   font-size: clamp(2.5rem, 10vw, 4.5rem);
@@ -425,12 +430,14 @@ button:focus-visible {
   pointer-events: none;
 }
 
-.tile-paw-bomb .tile-symbol {
+.tile-paw-bomb .tile-symbol,
+.tile-big-paw-bomb .tile-symbol {
   animation: bomb-breathe 1.15s ease-in-out infinite;
   filter: drop-shadow(0 0 7px rgba(255, 221, 87, 0.92)) drop-shadow(0 4px 3px rgba(25, 48, 76, 0.32));
 }
 
-.tile-paw-bomb .tile-symbol::after {
+.tile-paw-bomb .tile-symbol::after,
+.tile-big-paw-bomb .tile-symbol::after {
   position: absolute;
   right: -2%;
   bottom: -2%;
@@ -446,8 +453,21 @@ button:focus-visible {
   font-size: 0.32em;
 }
 
+.tile-big-paw-bomb .tile-symbol {
+  animation-duration: 0.92s;
+  filter: drop-shadow(0 0 10px rgba(230, 118, 255, 0.95)) drop-shadow(0 4px 3px rgba(25, 48, 76, 0.34));
+}
+
+.tile-big-paw-bomb .tile-symbol::after {
+  width: 48%;
+  background: linear-gradient(145deg, #ffe76f, #ff83c1);
+  content: "🐾";
+}
+
 .tile.drag-source.tile-paw-bomb .tile-symbol,
-.board[aria-busy="true"] .tile-paw-bomb .tile-symbol {
+.tile.drag-source.tile-big-paw-bomb .tile-symbol,
+.board[aria-busy="true"] .tile-paw-bomb .tile-symbol,
+.board[aria-busy="true"] .tile-big-paw-bomb .tile-symbol {
   animation-play-state: paused;
 }
 
@@ -515,6 +535,22 @@ button:focus-visible {
     transparent 72%
   );
   filter: drop-shadow(0 0 32px rgba(255, 103, 159, 0.92));
+}
+
+.paw-blast-big:not(.paw-blast-combo) {
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 1) 0 8%,
+    rgba(255, 231, 111, 0.97) 14%,
+    rgba(235, 105, 255, 0.8) 33%,
+    rgba(126, 83, 218, 0.32) 55%,
+    transparent 73%
+  );
+  filter: drop-shadow(0 0 30px rgba(218, 91, 255, 0.9));
+}
+
+.paw-blast-big:not(.paw-blast-combo) .paw-blast-core {
+  background: linear-gradient(145deg, #ffe76f, #ed73ff 54%, #7656d8);
 }
 
 .paw-blast-combo .paw-blast-core {

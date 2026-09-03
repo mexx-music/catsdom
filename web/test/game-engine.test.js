@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BLOCKED_TILE, GameEngine, PAW_BOMB, TILE_TYPES } from "../src/game-engine.js";
+import {
+  BIG_PAW_BOMB,
+  BLOCKED_TILE,
+  GameEngine,
+  PAW_BOMB,
+  TILE_TYPES,
+} from "../src/game-engine.js";
 
 function seededRandom(seed = 7) {
   let value = seed >>> 0;
@@ -90,6 +96,44 @@ test("a four-tile match creates a mini paw bomb", () => {
   assert.equal(result.accepted, true);
   assert.ok(result.createdSpecials >= 1);
   assert.ok(result.frames.at(-1).board.flat().includes(PAW_BOMB));
+});
+
+test("a five-tile match creates a big paw bomb", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[0][0] = "cat";
+  board[0][1] = "cat";
+  board[0][2] = "paw";
+  board[0][3] = "cat";
+  board[0][4] = "cat";
+  board[1][2] = "cat";
+  const state = { board, score: 0, moves: 0 };
+
+  const result = engine.trySwap(state, { row: 1, column: 2 }, { row: 0, column: 2 });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.createdBigSpecials, 1);
+  assert.ok(result.frames.at(-1).board.flat().includes(BIG_PAW_BOMB));
+});
+
+test("a big paw bomb clears a five by five area", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[3][3] = BIG_PAW_BOMB;
+  const state = { board, score: 0, moves: 0 };
+
+  const result = engine.activatePawBombAt(state, { row: 3, column: 3 });
+  const blastFrame = result.frames.find((frame) => frame.board.flat().includes(null));
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.blastCenters[0].power, 2);
+  assert.ok(result.removedTiles >= 25);
+  assert.ok(blastFrame);
+  for (let row = 1; row <= 5; row += 1) {
+    for (let column = 1; column <= 5; column += 1) {
+      assert.equal(blastFrame.board[row][column], null);
+    }
+  }
 });
 
 test("dragging a mini paw bomb clears a three by three area", () => {

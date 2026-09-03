@@ -1,4 +1,10 @@
-import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=21";
+import {
+  BIG_PAW_BOMB,
+  BLOCKED_TILE,
+  BOARD_SIZE,
+  GameEngine,
+  PAW_BOMB,
+} from "./game-engine.js?v=22";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -8,7 +14,10 @@ const TILE_SYMBOLS = {
   mouse: { symbol: "🐭", name: "Maus" },
   bell: { symbol: "🔔", name: "Glöckchen" },
   [PAW_BOMB]: { symbol: "💣", name: "Mini-Pfotenbombe" },
+  [BIG_PAW_BOMB]: { symbol: "🧨", name: "Riesen-Pfotenbombe" },
 };
+
+const isBombTile = (tile) => tile === PAW_BOMB || tile === BIG_PAW_BOMB;
 
 const OBJECT_TOP = 0;
 const OBJECT_LEFT = 0;
@@ -310,9 +319,9 @@ async function animateClears(beforeBoard, clearedBoard, particleCount = 8) {
 
 async function animatePawBombBlast(blastCenters, isCombo) {
   const points = blastCenters
-    .map((position) => tileElement(position))
-    .filter(Boolean)
-    .map((tile) => {
+    .map((position) => ({ position, tile: tileElement(position) }))
+    .filter(({ tile }) => Boolean(tile))
+    .map(({ position, tile }) => {
       const rect = tile.getBoundingClientRect();
       return {
         tile,
@@ -320,17 +329,25 @@ async function animatePawBombBlast(blastCenters, isCombo) {
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
         size: rect.width,
+        power: position.power ?? 1,
       };
     });
   if (points.length === 0) return;
 
-  setMessage(isCombo ? "Doppel-Pfoten-Krawall lädt …" : "Pfotenbombe lädt …");
+  const hasBigBomb = points.some((point) => point.power >= 2);
+  setMessage(
+    isCombo
+      ? "Doppel-Pfoten-Krawall lädt …"
+      : hasBigBomb
+        ? "Riesen-Pfotenbombe lädt …"
+        : "Pfotenbombe lädt …",
+  );
   if (reducedMotion) {
     await sleep(180);
     return;
   }
 
-  const chargeDuration = isCombo ? 720 : 540;
+  const chargeDuration = isCombo ? 720 : hasBigBomb ? 650 : 540;
   await Promise.all(
     points.map(({ visual }, index) =>
       waitForAnimation(
@@ -338,7 +355,7 @@ async function animatePawBombBlast(blastCenters, isCombo) {
           [
             { transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
             {
-              transform: `scale(${isCombo ? 1.42 : 1.28}) rotate(${index % 2 ? 10 : -10}deg)`,
+              transform: `scale(${isCombo ? 1.42 : hasBigBomb ? 1.36 : 1.28}) rotate(${index % 2 ? 10 : -10}deg)`,
               filter: "brightness(1.65)",
               offset: 0.72,
             },
@@ -362,10 +379,22 @@ async function animatePawBombBlast(blastCenters, isCombo) {
 
   const blastAnimations = effects.map((effect, index) => {
     const blast = document.createElement("div");
-    blast.className = `paw-blast${effect.comboCore ? " paw-blast-combo" : ""}`;
+    blast.className = `paw-blast${effect.power >= 2 ? " paw-blast-big" : ""}${
+      effect.comboCore ? " paw-blast-combo" : ""
+    }`;
     blast.style.left = `${effect.x}px`;
     blast.style.top = `${effect.y}px`;
-    const diameter = effect.size * (effect.comboCore ? 6.1 : isCombo ? 4.2 : 3.35);
+    const diameter =
+      effect.size *
+      (effect.comboCore
+        ? 6.1
+        : effect.power >= 2
+          ? isCombo
+            ? 5.7
+            : 5.25
+          : isCombo
+            ? 4.2
+            : 3.35);
     blast.style.width = `${diameter}px`;
     blast.style.height = `${diameter}px`;
     blast.innerHTML = '<span class="paw-blast-ring"></span><span class="paw-blast-core">🐾</span>';
@@ -379,7 +408,7 @@ async function animatePawBombBlast(blastCenters, isCombo) {
         { opacity: 0, transform: "translate(-50%,-50%) scale(1.18) rotate(8deg)" },
       ],
       {
-        duration: effect.comboCore ? 1050 : isCombo ? 920 : 760,
+        duration: effect.comboCore ? 1050 : isCombo ? 920 : effect.power >= 2 ? 940 : 760,
         delay: index * 45,
         easing: "cubic-bezier(.16,.72,.22,1)",
         fill: "forwards",
@@ -674,7 +703,7 @@ async function completeCatReveal() {
 async function handleTileTap(position) {
   if (busy || objectCollected) return;
 
-  if (state.board[position.row][position.column] === PAW_BOMB) {
+  if (isBombTile(state.board[position.row][position.column])) {
     selected = null;
     await performBombTap(position);
     return;
@@ -784,8 +813,10 @@ async function playAcceptedResult(result, gainedPoints) {
         ? `Doppel-Pfoten-Krawall! ${result.removedTiles} Felder · +${gainedPoints}`
         : `Pfotenbombe! ${result.removedTiles} Felder getroffen · +${gainedPoints}`,
     );
+  } else if (result.createdBigSpecials > 0) {
+    setMessage("Riesen-Pfotenbombe erzeugt – 5×5 Sprengkraft!");
   } else if (result.createdSpecials > 0) {
-    setMessage("Mini-Pfotenbombe erzeugt – ziehe sie auf ein Nachbarfeld!");
+    setMessage("Mini-Pfotenbombe erzeugt – antippen oder ziehen!");
   } else {
     setMessage(
       result.reshuffled
