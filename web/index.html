@@ -12,10 +12,10 @@
       content="Catsdom Pfoten-Puzzle – ein eigenständiger Katzen-Puzzle-Prototyp."
     />
     <title>Catsdom – Pfoten-Puzzle</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=10" />
+    <link rel="manifest" href="./manifest.webmanifest?v=11" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css?v=10" />
+    <link rel="stylesheet" href="./styles.css?v=11" />
   </head>
   <body>
     <main class="app-shell">
@@ -59,26 +59,11 @@
             <span>Züge</span>
             <strong id="moves">25</strong>
           </div>
+          <div class="stat-card">
+            <span>Milo</span>
+            <strong id="reveal-count">0/9</strong>
+          </div>
         </div>
-
-        <section class="cat-discovery" aria-labelledby="cat-discovery-title">
-          <div class="cat-photo-frame">
-            <img
-              src="./assets/milo-window-seat.webp"
-              alt="Orangefarbener Kater Milo auf einem sonnigen Fensterplatz"
-            />
-            <div id="cat-cover" class="cat-cover" aria-hidden="true">
-              <span>🐾</span><span>🐾</span><span>🐾</span>
-              <span>🐾</span><span>🐾</span><span>🐾</span>
-              <span>🐾</span><span>🐾</span><span>🐾</span>
-            </div>
-          </div>
-          <div class="cat-discovery-copy">
-            <span>Katze des Levels</span>
-            <strong id="cat-discovery-title">Milo freilegen</strong>
-            <small><b id="reveal-count">0</b> von 9 Bildteilen entdeckt</small>
-          </div>
-        </section>
 
         <div
           id="board"
@@ -121,6 +106,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=10"></script>
+    <script type="module" src="./src/app.js?v=11"></script>
   </body>
 </html>

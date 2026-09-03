@@ -25,7 +25,6 @@ const elements = {
   dialogHomeButton: document.querySelector("#dialog-home-button"),
   installButton: document.querySelector("#install-button"),
   pwaNote: document.querySelector("#pwa-note"),
-  catCoverPieces: [...document.querySelectorAll("#cat-cover span")],
   revealCount: document.querySelector("#reveal-count"),
   catRevealDialog: document.querySelector("#cat-reveal-dialog"),
   catRevealClose: document.querySelector("#cat-reveal-close"),
@@ -41,6 +40,7 @@ let suppressNextClick = false;
 let deferredInstallPrompt = null;
 let revealedPieces = 0;
 let catDiscovered = false;
+let newRevealFrom = 0;
 
 const REVEAL_ORDER = [4, 0, 8, 2, 6, 1, 7, 3, 5];
 
@@ -409,6 +409,24 @@ function render() {
   elements.board.setAttribute("aria-busy", String(busy));
   elements.board.replaceChildren();
 
+  const photoLayer = document.createElement("div");
+  photoLayer.className = "board-photo";
+  photoLayer.setAttribute("aria-hidden", "true");
+  const revealedPhotoPieces = new Set(REVEAL_ORDER.slice(0, revealedPieces));
+  for (let pieceIndex = 0; pieceIndex < 9; pieceIndex += 1) {
+    const piece = document.createElement("span");
+    const revealPosition = REVEAL_ORDER.indexOf(pieceIndex);
+    piece.className = "board-photo-piece";
+    piece.style.setProperty("--photo-x", `${(pieceIndex % 3) * 50}%`);
+    piece.style.setProperty("--photo-y", `${Math.floor(pieceIndex / 3) * 50}%`);
+    if (revealPosition < revealedPieces) piece.classList.add("revealed");
+    if (revealPosition >= newRevealFrom && revealPosition < revealedPieces) {
+      piece.classList.add("newly-revealed");
+    }
+    photoLayer.append(piece);
+  }
+  elements.board.append(photoLayer);
+
   state.board.forEach((row, rowIndex) => {
     row.forEach((tile, columnIndex) => {
       const position = { row: rowIndex, column: columnIndex };
@@ -419,6 +437,12 @@ function render() {
       button.disabled = busy || tile === null || state.movesLeft === 0;
       button.dataset.row = String(rowIndex);
       button.dataset.column = String(columnIndex);
+
+      const photoRow = Math.min(2, Math.floor((rowIndex * 3) / state.board.length));
+      const photoColumn = Math.min(2, Math.floor((columnIndex * 3) / row.length));
+      if (revealedPhotoPieces.has(photoRow * 3 + photoColumn)) {
+        button.classList.add("photo-revealed");
+      }
 
       if (tile) {
         button.textContent = TILE_SYMBOLS[tile].symbol;
@@ -441,26 +465,12 @@ function render() {
       elements.board.append(button);
     });
   });
+  newRevealFrom = revealedPieces;
 }
 
 function renderCatReveal(previousCount = revealedPieces) {
-  elements.revealCount.textContent = String(revealedPieces);
-  elements.catCoverPieces.forEach((piece, pieceIndex) => {
-    const revealPosition = REVEAL_ORDER.indexOf(pieceIndex);
-    const isRevealed = revealPosition < revealedPieces;
-    const isNew = isRevealed && revealPosition >= previousCount;
-    piece.classList.toggle("revealed", isRevealed);
-    if (isNew && !reducedMotion) {
-      piece.animate(
-        [
-          { filter: "brightness(1)", boxShadow: "inset 0 0 0 0 rgba(255,255,255,0)" },
-          { filter: "brightness(1.55)", boxShadow: "inset 0 0 0 3px white", offset: 0.32 },
-          { filter: "brightness(1)", boxShadow: "inset 0 0 0 0 rgba(255,255,255,0)" },
-        ],
-        { duration: 480, easing: "ease-out" },
-      );
-    }
-  });
+  newRevealFrom = previousCount;
+  elements.revealCount.textContent = `${revealedPieces}/9`;
 }
 
 function showGameOver() {
