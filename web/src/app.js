@@ -212,18 +212,33 @@ function spawnParticles(tile) {
   if (reducedMotion) return;
   const rect = tile.getBoundingClientRect();
   const color = getComputedStyle(tile).backgroundColor;
-  const distance = Math.max(20, rect.width * 0.7);
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const ring = document.createElement("span");
+  ring.className = "burst-ring";
+  ring.style.left = `${centerX}px`;
+  ring.style.top = `${centerY}px`;
+  ring.style.setProperty("--burst-size", `${rect.width * 0.82}px`);
+  ring.style.setProperty("--particle-color", color);
+  document.body.append(ring);
+  ring.addEventListener("animationend", () => ring.remove(), { once: true });
 
-  for (let index = 0; index < 4; index += 1) {
-    const angle = (Math.PI * 2 * index) / 4 + Math.random() * 0.35;
+  for (let index = 0; index < 8; index += 1) {
+    const angle = (Math.PI * 2 * index) / 8 + Math.random() * 0.28;
+    const distance = rect.width * (0.78 + Math.random() * 0.42);
     const particle = document.createElement("span");
-    particle.className = "particle";
-    particle.style.left = `${rect.left + rect.width / 2}px`;
-    particle.style.top = `${rect.top + rect.height / 2}px`;
-    particle.style.setProperty("--particle-size", `${Math.max(5, rect.width * 0.12)}px`);
-    particle.style.setProperty("--particle-color", color);
+    particle.className = `particle ${index % 2 === 0 ? "particle-shard" : "particle-spark"}`;
+    particle.style.left = `${centerX}px`;
+    particle.style.top = `${centerY}px`;
+    particle.style.setProperty(
+      "--particle-size",
+      `${Math.max(7, rect.width * (0.13 + Math.random() * 0.055))}px`,
+    );
+    particle.style.setProperty("--particle-color", index % 3 === 0 ? "#fff" : color);
     particle.style.setProperty("--particle-x", `${Math.cos(angle) * distance}px`);
     particle.style.setProperty("--particle-y", `${Math.sin(angle) * distance}px`);
+    particle.style.setProperty("--particle-rotation", `${100 + Math.random() * 180}deg`);
+    particle.style.setProperty("--particle-delay", `${index * 5}ms`);
     document.body.append(particle);
     particle.addEventListener("animationend", () => particle.remove(), { once: true });
   }
@@ -242,11 +257,16 @@ async function animateClears(beforeBoard, clearedBoard) {
         waitForAnimation(
           element.animate(
             [
-              { opacity: 1, transform: "scale(1) rotate(0deg)" },
-              { opacity: 1, transform: "scale(1.2) rotate(-5deg)", offset: 0.42 },
-              { opacity: 0, transform: "scale(0.12) rotate(12deg)" },
+              { opacity: 1, transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
+              {
+                opacity: 1,
+                transform: "scale(1.34) rotate(-6deg)",
+                filter: "brightness(1.28)",
+                offset: 0.46,
+              },
+              { opacity: 0, transform: "scale(0.05) rotate(18deg)", filter: "brightness(1.4)" },
             ],
-            { duration: 180, easing: "cubic-bezier(.3,.8,.35,1)", fill: "forwards" },
+            { duration: 265, easing: "cubic-bezier(.25,.8,.3,1)", fill: "forwards" },
           ),
         ),
       );
@@ -259,7 +279,7 @@ async function animateClears(beforeBoard, clearedBoard) {
       { transform: "scale(1.012)", offset: 0.45 },
       { transform: "scale(1)" },
     ],
-    { duration: 165, easing: "ease-out" },
+    { duration: 220, easing: "ease-out" },
   );
   await Promise.all([...animations, waitForAnimation(boardBounce)]);
 }
