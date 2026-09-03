@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, BOARD_SIZE, GameEngine } from "./game-engine.js?v=17";
+import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=18";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -7,6 +7,7 @@ const TILE_SYMBOLS = {
   yarn: { symbol: "🧶", name: "Wollknäuel" },
   mouse: { symbol: "🐭", name: "Maus" },
   bell: { symbol: "🔔", name: "Glöckchen" },
+  [PAW_BOMB]: { symbol: "💣", name: "Mini-Pfotenbombe" },
 };
 
 const OBJECT_TOP = 0;
@@ -650,11 +651,17 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
 
   busy = false;
   const discoveredNow = revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected;
-  setMessage(
-    result.reshuffled
-      ? `+${gainedPoints} Punkte · Brett neu gemischt`
-      : `+${gainedPoints} Punkte · ${result.removedTiles} Teile entfernt`,
-  );
+  if (result.specialActivated) {
+    setMessage(`Pfotenbombe! ${result.removedTiles} Felder getroffen · +${gainedPoints}`);
+  } else if (result.createdSpecials > 0) {
+    setMessage("Mini-Pfotenbombe erzeugt – ziehe sie auf ein Nachbarfeld!");
+  } else {
+    setMessage(
+      result.reshuffled
+        ? `+${gainedPoints} Punkte · Brett neu gemischt`
+        : `+${gainedPoints} Punkte · ${result.removedTiles} Teile entfernt`,
+    );
+  }
   render();
 
   if (discoveredNow) {

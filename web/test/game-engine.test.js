@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BLOCKED_TILE, GameEngine, TILE_TYPES } from "../src/game-engine.js";
+import { BLOCKED_TILE, GameEngine, PAW_BOMB, TILE_TYPES } from "../src/game-engine.js";
 
 function seededRandom(seed = 7) {
   let value = seed >>> 0;
@@ -73,6 +73,44 @@ test("cross-shaped matches count their shared tile once", () => {
 
   assert.equal(matches.size, 5);
   assert.ok(matches.has("3,3"));
+});
+
+test("a four-tile match creates a mini paw bomb", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[0][0] = "cat";
+  board[0][1] = "cat";
+  board[0][2] = "paw";
+  board[0][3] = "cat";
+  board[1][2] = "cat";
+  const state = { board, score: 0, moves: 0 };
+
+  const result = engine.trySwap(state, { row: 1, column: 2 }, { row: 0, column: 2 });
+
+  assert.equal(result.accepted, true);
+  assert.ok(result.createdSpecials >= 1);
+  assert.ok(result.frames.at(-1).board.flat().includes(PAW_BOMB));
+});
+
+test("dragging a mini paw bomb clears a three by three area", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[4][4] = PAW_BOMB;
+  const state = { board, score: 0, moves: 0 };
+
+  const result = engine.trySwap(state, { row: 4, column: 4 }, { row: 4, column: 5 });
+  const blastFrame = result.frames.find((frame) => frame.board.flat().includes(null));
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.specialActivated, true);
+  assert.equal(result.frames.at(-1).moves, 1);
+  assert.equal(result.removedTiles >= 9, true);
+  assert.ok(blastFrame);
+  for (let row = 3; row <= 5; row += 1) {
+    for (let column = 4; column <= 6; column += 1) {
+      assert.equal(blastFrame.board[row][column], null);
+    }
+  }
 });
 
 test("blocked object cells split gravity and cannot be swapped", () => {

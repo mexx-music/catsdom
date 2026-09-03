@@ -1,6 +1,7 @@
 export const BOARD_SIZE = 8;
 export const TILE_TYPES = ["cat", "paw", "fish", "yarn", "mouse", "bell"];
 export const BLOCKED_TILE = "blocked";
+export const PAW_BOMB = "paw-bomb";
 
 const copyBoard = (board) => board.map((row) => [...row]);
 const positionKey = ({ row, column }) => `${row},${column}`;
@@ -36,7 +37,14 @@ export class GameEngine {
     }
 
     const board = copyBoard(state.board);
+    const firstTile = board[first.row][first.column];
+    const secondTile = board[second.row][second.column];
     this.swap(board, first, second);
+
+    if (firstTile === PAW_BOMB || secondTile === PAW_BOMB) {
+      return this.activatePawBomb(state, board, first, second, firstTile, secondTile);
+    }
+
     let matches = this.findMatches(board);
     if (matches.size === 0) {
       return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
@@ -44,25 +52,8 @@ export class GameEngine {
 
     const moves = state.moves + 1;
     const frames = [{ board: copyBoard(board), score: state.score, moves }];
-    let score = state.score;
-    let combo = 0;
-    let removedTiles = 0;
-
-    while (matches.size > 0 && combo < 100) {
-      combo += 1;
-      removedTiles += matches.size;
-      score += matches.size * 10 * combo;
-
-      for (const key of matches) {
-        const [row, column] = key.split(",").map(Number);
-        board[row][column] = null;
-      }
-      frames.push({ board: copyBoard(board), score, moves });
-
-      this.collapseAndRefill(board);
-      frames.push({ board: copyBoard(board), score, moves });
-      matches = this.findMatches(board);
-    }
+    const resolution = this.resolveMatches(board, state.score, moves, frames, [second, first]);
+    const { score, removedTiles, createdSpecials } = resolution;
 
     let reshuffled = false;
     if (!this.hasPossibleMove(board)) {
@@ -71,11 +62,26 @@ export class GameEngine {
       frames.push({ board: freshBoard, score, moves });
     }
 
-    return { accepted: true, frames, removedTiles, reshuffled };
+    return {
+      accepted: true,
+      frames,
+      removedTiles,
+      reshuffled,
+      createdSpecials,
+      specialActivated: false,
+    };
   }
 
   findMatches(board) {
     const matches = new Set();
+    for (const group of this.findMatchGroups(board)) {
+      for (const position of group) matches.add(positionKey(position));
+    }
+    return matches;
+  }
+
+  findMatchGroups(board) {
+    const groups = [];
     const rowCount = board.length;
     const columnCount = board[0]?.length ?? 0;
 
@@ -85,10 +91,13 @@ export class GameEngine {
         const tile = board[row][start];
         let end = start + 1;
         while (end < columnCount && tile !== null && board[row][end] === tile) end += 1;
-        if (tile !== null && tile !== BLOCKED_TILE && end - start >= 3) {
-          for (let column = start; column < end; column += 1) {
-            matches.add(positionKey({ row, column }));
-          }
+        if (TILE_TYPES.includes(tile) && end - start >= 3) {
+          groups.push(
+            Array.from({ length: end - start }, (_, index) => ({
+              row,
+              column: start + index,
+            })),
+          );
         }
         start = end;
       }
@@ -100,16 +109,113 @@ export class GameEngine {
         const tile = board[start][column];
         let end = start + 1;
         while (end < rowCount && tile !== null && board[end][column] === tile) end += 1;
-        if (tile !== null && tile !== BLOCKED_TILE && end - start >= 3) {
-          for (let row = start; row < end; row += 1) {
-            matches.add(positionKey({ row, column }));
-          }
+        if (TILE_TYPES.includes(tile) && end - start >= 3) {
+          groups.push(
+            Array.from({ length: end - start }, (_, index) => ({
+              row: start + index,
+              column,
+            })),
+          );
         }
         start = end;
       }
     }
 
-    return matches;
+    return groups;
+  }
+
+  resolveMatches(board, initialScore, moves, frames, preferredBombPositions = []) {
+    let groups = this.findMatchGroups(board);
+    let score = initialScore;
+    let combo = 0;
+    let removedTiles = 0;
+    let createdSpecials = 0;
+
+    while (groups.length > 0 && combo < 100) {
+      combo += 1;
+      const matches = new Set(groups.flatMap((group) => group.map(positionKey)));
+      const bombSpawns = new Map();
+
+      for (const group of groups.filter((candidate) => candidate.length === 4)) {
+        const preferred = preferredBombPositions.find((position) =>
+          group.some((candidate) => positionKey(candidate) === positionKey(position)),
+        );
+        const spawn = preferred ?? group[Math.floor((group.length - 1) / 2)];
+        bombSpawns.set(positionKey(spawn), spawn);
+      }
+
+      score += matches.size * 10 * combo;
+      for (const key of matches) {
+        const [row, column] = key.split(",").map(Number);
+        board[row][column] = null;
+      }
+      for (const [key, spawn] of bombSpawns) {
+        board[spawn.row][spawn.column] = PAW_BOMB;
+        matches.delete(key);
+      }
+      removedTiles += matches.size;
+      createdSpecials += bombSpawns.size;
+      frames.push({ board: copyBoard(board), score, moves });
+
+      this.collapseAndRefill(board);
+      frames.push({ board: copyBoard(board), score, moves });
+      groups = this.findMatchGroups(board);
+      preferredBombPositions = [];
+    }
+
+    return { score, removedTiles, createdSpecials };
+  }
+
+  activatePawBomb(state, board, first, second, firstTile, secondTile) {
+    const moves = state.moves + 1;
+    const frames = [{ board: copyBoard(board), score: state.score, moves }];
+    const firstCenter = firstTile === PAW_BOMB ? second : first;
+    const secondCenter = secondTile === PAW_BOMB ? first : second;
+    const queue = [firstCenter];
+    if (firstTile === PAW_BOMB && secondTile === PAW_BOMB) queue.push(secondCenter);
+    const detonated = new Set();
+    const cleared = new Set();
+
+    while (queue.length > 0) {
+      const center = queue.shift();
+      const centerKey = positionKey(center);
+      if (detonated.has(centerKey)) continue;
+      detonated.add(centerKey);
+
+      for (let row = center.row - 1; row <= center.row + 1; row += 1) {
+        for (let column = center.column - 1; column <= center.column + 1; column += 1) {
+          const position = { row, column };
+          if (!this.isInside(board, position) || board[row][column] === BLOCKED_TILE) continue;
+          if (board[row][column] === PAW_BOMB && !detonated.has(positionKey(position))) {
+            queue.push(position);
+          }
+          if (board[row][column] !== null) cleared.add(positionKey(position));
+          board[row][column] = null;
+        }
+      }
+    }
+
+    let score = state.score + cleared.size * 15;
+    frames.push({ board: copyBoard(board), score, moves });
+    this.collapseAndRefill(board);
+    frames.push({ board: copyBoard(board), score, moves });
+    const resolution = this.resolveMatches(board, score, moves, frames);
+    score = resolution.score;
+
+    let reshuffled = false;
+    if (!this.hasPossibleMove(board)) {
+      reshuffled = true;
+      frames.push({ board: this.createBoardWithoutMatches(), score, moves });
+    }
+
+    return {
+      accepted: true,
+      frames,
+      removedTiles: cleared.size + resolution.removedTiles,
+      reshuffled,
+      createdSpecials: resolution.createdSpecials,
+      specialActivated: true,
+    };
   }
 
   hasPossibleMove(board) {
@@ -129,6 +235,12 @@ export class GameEngine {
             candidate[neighbour.row][neighbour.column] === BLOCKED_TILE
           ) {
             continue;
+          }
+          if (
+            candidate[current.row][current.column] === PAW_BOMB ||
+            candidate[neighbour.row][neighbour.column] === PAW_BOMB
+          ) {
+            return true;
           }
           this.swap(candidate, current, neighbour);
           const createsMatch = this.findMatches(candidate).size > 0;

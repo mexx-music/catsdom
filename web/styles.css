@@ -128,6 +128,11 @@ button:focus-visible {
   background: var(--tile-color);
 }
 
+.tile-paw-bomb {
+  --tile-color: #ff6f61;
+  background: var(--tile-color);
+}
+
 .start-screen h1 {
   margin: 0;
   font-size: clamp(2.5rem, 10vw, 4.5rem);
@@ -402,6 +407,7 @@ button:focus-visible {
 }
 
 .tile-symbol {
+  position: relative;
   display: grid;
   width: 78%;
   height: 78%;
@@ -411,6 +417,43 @@ button:focus-visible {
   transition: transform 110ms ease, filter 110ms ease;
   will-change: transform, opacity;
   pointer-events: none;
+}
+
+.tile-paw-bomb .tile-symbol {
+  animation: bomb-breathe 1.15s ease-in-out infinite;
+  filter: drop-shadow(0 0 7px rgba(255, 221, 87, 0.92)) drop-shadow(0 4px 3px rgba(25, 48, 76, 0.32));
+}
+
+.tile-paw-bomb .tile-symbol::after {
+  position: absolute;
+  right: -2%;
+  bottom: -2%;
+  display: grid;
+  width: 43%;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #ffdc57;
+  box-shadow: 0 2px 5px rgba(35, 25, 47, 0.3);
+  content: "🐾";
+  font-size: 0.32em;
+}
+
+.tile.drag-source.tile-paw-bomb .tile-symbol,
+.board[aria-busy="true"] .tile-paw-bomb .tile-symbol {
+  animation-play-state: paused;
+}
+
+@keyframes bomb-breathe {
+  0%,
+  100% {
+    transform: scale(0.94) rotate(-3deg);
+  }
+
+  50% {
+    transform: scale(1.08) rotate(3deg);
+  }
 }
 
 .board.reveal-complete .tile-symbol {
