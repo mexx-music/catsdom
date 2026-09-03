@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GameEngine, STARTING_MOVES, TILE_TYPES } from "../src/game-engine.js";
+import { BLOCKED_TILE, GameEngine, STARTING_MOVES, TILE_TYPES } from "../src/game-engine.js";
 
 function seededRandom(seed = 7) {
   let value = seed >>> 0;
@@ -73,4 +73,38 @@ test("cross-shaped matches count their shared tile once", () => {
 
   assert.equal(matches.size, 5);
   assert.ok(matches.has("3,3"));
+});
+
+test("blocked object cells split gravity and cannot be swapped", () => {
+  const engine = new GameEngine(seededRandom());
+  const blocked = [
+    { row: 3, column: 3 },
+    { row: 3, column: 4 },
+    { row: 4, column: 3 },
+    { row: 4, column: 4 },
+  ];
+  const state = engine.newGame(blocked);
+
+  assert.ok(blocked.every(({ row, column }) => state.board[row][column] === BLOCKED_TILE));
+  assert.equal(engine.findMatches(state.board).size, 0);
+  assert.equal(engine.hasPossibleMove(state.board), true);
+  assert.equal(
+    engine.trySwap(state, { row: 3, column: 2 }, { row: 3, column: 3 }).accepted,
+    false,
+  );
+});
+
+test("collected objects release clean playable cells", () => {
+  const engine = new GameEngine(seededRandom());
+  const blocked = [
+    { row: 3, column: 3 },
+    { row: 3, column: 4 },
+    { row: 4, column: 3 },
+    { row: 4, column: 4 },
+  ];
+  const unlocked = engine.unlockCells(engine.newGame(blocked), blocked);
+
+  assert.ok(blocked.every(({ row, column }) => TILE_TYPES.includes(unlocked.board[row][column])));
+  assert.equal(engine.findMatches(unlocked.board).size, 0);
+  assert.equal(engine.hasPossibleMove(unlocked.board), true);
 });

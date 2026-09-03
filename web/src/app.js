@@ -1,4 +1,4 @@
-import { GameEngine } from "./game-engine.js";
+import { BLOCKED_TILE, GameEngine } from "./game-engine.js?v=15";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -8,6 +8,14 @@ const TILE_SYMBOLS = {
   mouse: { symbol: "🐭", name: "Maus" },
   bell: { symbol: "🔔", name: "Glöckchen" },
 };
+
+const OBJECT_TOP = 3;
+const OBJECT_LEFT = 3;
+const OBJECT_SIZE = 2;
+const OBJECT_CELLS = Array.from({ length: OBJECT_SIZE ** 2 }, (_, index) => ({
+  row: OBJECT_TOP + Math.floor(index / OBJECT_SIZE),
+  column: OBJECT_LEFT + (index % OBJECT_SIZE),
+}));
 
 const elements = {
   startScreen: document.querySelector("#start-screen"),
@@ -35,14 +43,9 @@ let busy = false;
 let dragGesture = null;
 let suppressNextClick = false;
 let deferredInstallPrompt = null;
-let revealedPieces = 0;
+let revealedObjectPieces = new Set();
+let newlyRevealedObjectPieces = new Set();
 let objectCollected = false;
-let newRevealFrom = 0;
-
-const REVEAL_ORDER = [4, 0, 8, 2, 6, 1, 7, 3, 5];
-const OBJECT_TOP = 2;
-const OBJECT_LEFT = 2;
-const OBJECT_SIZE = 3;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -54,6 +57,10 @@ function tileElement(position) {
   );
 }
 
+function tileVisual(tile) {
+  return tile?.querySelector(".tile-symbol") ?? tile;
+}
+
 function waitForAnimation(animation) {
   return animation.finished.catch(() => undefined);
 }
@@ -63,6 +70,8 @@ async function animateSwap(first, second, returnToOrigin = false) {
   const firstTile = tileElement(first);
   const secondTile = tileElement(second);
   if (!firstTile || !secondTile) return;
+  const firstVisual = tileVisual(firstTile);
+  const secondVisual = tileVisual(secondTile);
 
   const firstRect = firstTile.getBoundingClientRect();
   const secondRect = secondTile.getBoundingClientRect();
@@ -96,18 +105,19 @@ async function animateSwap(first, second, returnToOrigin = false) {
       ];
 
   await Promise.all([
-    waitForAnimation(firstTile.animate(firstFrames, timing)),
-    waitForAnimation(secondTile.animate(secondFrames, timing)),
+    waitForAnimation(firstVisual.animate(firstFrames, timing)),
+    waitForAnimation(secondVisual.animate(secondFrames, timing)),
   ]);
 }
 
 function resetDragStyles(gesture) {
   [gesture?.sourceElement, gesture?.targetElement].forEach((tile) => {
     if (!tile) return;
-    tile.style.removeProperty("transform");
-    tile.style.removeProperty("transition");
     tile.style.removeProperty("z-index");
-    tile.style.removeProperty("will-change");
+    const visual = tileVisual(tile);
+    visual.style.removeProperty("transform");
+    visual.style.removeProperty("transition");
+    visual.style.removeProperty("will-change");
     tile.classList.remove("drag-source", "drag-target");
   });
 }
@@ -153,17 +163,19 @@ function updateDirectDrag(gesture, clientX, clientY) {
   gesture.progress = progress;
 
   gesture.sourceElement.classList.add("drag-source");
-  gesture.sourceElement.style.transition = "none";
-  gesture.sourceElement.style.willChange = "transform";
   gesture.sourceElement.style.zIndex = "6";
-  gesture.sourceElement.style.transform = `translate3d(${moveX}px,${moveY}px,0) scale(1.055)`;
+  const sourceVisual = tileVisual(gesture.sourceElement);
+  sourceVisual.style.transition = "none";
+  sourceVisual.style.willChange = "transform";
+  sourceVisual.style.transform = `translate3d(${moveX}px,${moveY}px,0) scale(1.055)`;
 
   if (targetElement) {
     targetElement.classList.add("drag-target");
-    targetElement.style.transition = "none";
-    targetElement.style.willChange = "transform";
     targetElement.style.zIndex = "5";
-    targetElement.style.transform = `translate3d(${-stepX * progress}px,${-stepY * progress}px,0) scale(${1 - progress * 0.035})`;
+    const targetVisual = tileVisual(targetElement);
+    targetVisual.style.transition = "none";
+    targetVisual.style.willChange = "transform";
+    targetVisual.style.transform = `translate3d(${-stepX * progress}px,${-stepY * progress}px,0) scale(${1 - progress * 0.035})`;
   }
 }
 
@@ -179,7 +191,7 @@ async function animateDirectDragRelease(gesture, completeSwap) {
     : 150;
   const sourceEndX = completeSwap ? gesture.stepX : 0;
   const sourceEndY = completeSwap ? gesture.stepY : 0;
-  const sourceAnimation = gesture.sourceElement.animate(
+  const sourceAnimation = tileVisual(gesture.sourceElement).animate(
     [
       { transform: `translate3d(${gesture.moveX}px,${gesture.moveY}px,0) scale(1.055)` },
       { transform: `translate3d(${sourceEndX}px,${sourceEndY}px,0) scale(1)` },
@@ -193,7 +205,7 @@ async function animateDirectDragRelease(gesture, completeSwap) {
   const animations = [waitForAnimation(sourceAnimation)];
 
   if (target) {
-    const targetAnimation = target.animate(
+    const targetAnimation = tileVisual(target).animate(
       [
         {
           transform: `translate3d(${-gesture.stepX * gesture.progress}px,${-gesture.stepY * gesture.progress}px,0) scale(${1 - gesture.progress * 0.035})`,
@@ -220,7 +232,8 @@ async function animateDirectDragRelease(gesture, completeSwap) {
 function spawnParticles(tile) {
   if (reducedMotion) return;
   const rect = tile.getBoundingClientRect();
-  const color = getComputedStyle(tile).backgroundColor;
+  const tileStyle = getComputedStyle(tile);
+  const color = tileStyle.getPropertyValue("--tile-color").trim() || tileStyle.backgroundColor;
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
   const ring = document.createElement("span");
@@ -264,7 +277,7 @@ async function animateClears(beforeBoard, clearedBoard) {
       spawnParticles(element);
       animations.push(
         waitForAnimation(
-          element.animate(
+          tileVisual(element).animate(
             [
               { opacity: 1, transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
               {
@@ -302,41 +315,52 @@ async function animateFall(clearedBoard) {
   const animations = [];
 
   for (let column = 0; column < clearedBoard[0].length; column += 1) {
-    const sourceRows = [];
-    for (let row = 0; row < clearedBoard.length; row += 1) {
-      if (clearedBoard[row][column] !== null) sourceRows.push(row);
+    const segments = [];
+    let segmentTop = 0;
+    for (let row = 0; row <= clearedBoard.length; row += 1) {
+      if (row === clearedBoard.length || clearedBoard[row][column] === BLOCKED_TILE) {
+        if (segmentTop <= row - 1) segments.push([segmentTop, row - 1]);
+        segmentTop = row + 1;
+      }
     }
-    const newTileCount = clearedBoard.length - sourceRows.length;
 
-    for (let destinationRow = 0; destinationRow < clearedBoard.length; destinationRow += 1) {
-      const element = tileElement({ row: destinationRow, column });
-      if (!element) continue;
-      const isNewTile = destinationRow < newTileCount;
-      const sourceRow = isNewTile
-        ? destinationRow - newTileCount - 1
-        : sourceRows[destinationRow - newTileCount];
-      const distance = destinationRow - sourceRow;
-      if (distance <= 0) continue;
+    for (const [top, bottom] of segments) {
+      const sourceRows = [];
+      for (let row = top; row <= bottom; row += 1) {
+        if (clearedBoard[row][column] !== null) sourceRows.push(row);
+      }
+      const newTileCount = bottom - top + 1 - sourceRows.length;
 
-      animations.push(
-        waitForAnimation(
-          element.animate(
-            [
+      for (let destinationRow = top; destinationRow <= bottom; destinationRow += 1) {
+        const element = tileElement({ row: destinationRow, column });
+        if (!element?.querySelector(".tile-symbol")) continue;
+        const isNewTile = destinationRow < top + newTileCount;
+        const sourceRow = isNewTile
+          ? destinationRow - newTileCount - 1
+          : sourceRows[destinationRow - top - newTileCount];
+        const distance = destinationRow - sourceRow;
+        if (distance <= 0) continue;
+
+        animations.push(
+          waitForAnimation(
+            tileVisual(element).animate(
+              [
+                {
+                  opacity: isNewTile ? 0.4 : 1,
+                  transform: `translate3d(0,${-distance * rowDistance}px,0) scale(${isNewTile ? 0.88 : 1})`,
+                },
+                { opacity: 1, transform: "translate3d(0,5px,0) scale(1.018)", offset: 0.88 },
+                { opacity: 1, transform: "translate3d(0,0,0) scale(1)" },
+              ],
               {
-                opacity: isNewTile ? 0.4 : 1,
-                transform: `translate3d(0,${-distance * rowDistance}px,0) scale(${isNewTile ? 0.88 : 1})`,
+                duration: 340 + distance * 52,
+                delay: column * 10,
+                easing: "cubic-bezier(.18,.62,.24,1)",
               },
-              { opacity: 1, transform: "translate3d(0,5px,0) scale(1.018)", offset: 0.88 },
-              { opacity: 1, transform: "translate3d(0,0,0) scale(1)" },
-            ],
-            {
-              duration: 340 + distance * 52,
-              delay: column * 10,
-              easing: "cubic-bezier(.18,.62,.24,1)",
-            },
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
   await Promise.all(animations);
@@ -344,7 +368,7 @@ async function animateFall(clearedBoard) {
 
 async function animateReshuffle() {
   if (reducedMotion) return;
-  const tiles = [...elements.board.querySelectorAll(".tile")];
+  const tiles = [...elements.board.querySelectorAll(".tile-symbol")];
   await Promise.all(
     tiles.map((tile, index) =>
       waitForAnimation(
@@ -388,12 +412,13 @@ function restartGame() {
   state = engine.newGame();
   selected = null;
   busy = false;
-  revealedPieces = 0;
+  revealedObjectPieces = new Set();
+  newlyRevealedObjectPieces = new Set();
   objectCollected = false;
   if (elements.dialog.open) elements.dialog.close();
   clearDragHighlights();
-  setMessage("Tippe zwei Felder an oder ziehe ein Teil auf seinen Nachbarn");
-  renderCatReveal();
+  setMessage("Entferne die Steine über Milos verstecktem Bild");
+  renderObjectProgress();
   render();
 }
 
@@ -407,27 +432,31 @@ function render() {
   elements.board.setAttribute("aria-busy", String(busy));
   elements.board.replaceChildren();
 
-  const objectLayer = document.createElement("div");
-  objectLayer.className = "board-object";
-  objectLayer.setAttribute("aria-hidden", "true");
-  const revealedPhotoPieces = new Set(REVEAL_ORDER.slice(0, revealedPieces));
-  for (let pieceIndex = 0; pieceIndex < OBJECT_SIZE ** 2 && !objectCollected; pieceIndex += 1) {
-    const piece = document.createElement("span");
-    const revealPosition = REVEAL_ORDER.indexOf(pieceIndex);
-    const objectRow = Math.floor(pieceIndex / OBJECT_SIZE);
-    const objectColumn = pieceIndex % OBJECT_SIZE;
-    piece.className = "board-object-piece";
-    piece.style.gridRow = String(OBJECT_TOP + objectRow + 1);
-    piece.style.gridColumn = String(OBJECT_LEFT + objectColumn + 1);
-    piece.style.setProperty("--photo-x", `${(pieceIndex % 3) * 50}%`);
-    piece.style.setProperty("--photo-y", `${Math.floor(pieceIndex / 3) * 50}%`);
-    if (revealPosition < revealedPieces) piece.classList.add("revealed");
-    if (revealPosition >= newRevealFrom && revealPosition < revealedPieces) {
-      piece.classList.add("newly-revealed");
+  if (!objectCollected) {
+    const objectShell = document.createElement("div");
+    objectShell.className = "board-object-shell";
+    objectShell.setAttribute("aria-hidden", "true");
+    const objectLayer = document.createElement("div");
+    objectLayer.className = "board-object";
+    objectLayer.style.gridRow = `${OBJECT_TOP + 1} / span ${OBJECT_SIZE}`;
+    objectLayer.style.gridColumn = `${OBJECT_LEFT + 1} / span ${OBJECT_SIZE}`;
+    const photo = document.createElement("img");
+    photo.src = "./assets/milo-window-seat.webp";
+    photo.alt = "";
+    objectLayer.append(photo);
+    const cover = document.createElement("div");
+    cover.className = "board-object-cover";
+    for (let pieceIndex = 0; pieceIndex < OBJECT_SIZE ** 2; pieceIndex += 1) {
+      const piece = document.createElement("span");
+      piece.textContent = "🐾";
+      if (revealedObjectPieces.has(pieceIndex)) piece.classList.add("revealed");
+      if (newlyRevealedObjectPieces.has(pieceIndex)) piece.classList.add("newly-revealed");
+      cover.append(piece);
     }
-    objectLayer.append(piece);
+    objectLayer.append(cover);
+    objectShell.append(objectLayer);
+    elements.board.append(objectShell);
   }
-  elements.board.append(objectLayer);
 
   state.board.forEach((row, rowIndex) => {
     row.forEach((tile, columnIndex) => {
@@ -436,26 +465,31 @@ function render() {
       button.type = "button";
       button.className = tile ? `tile tile-${tile}` : "tile empty";
       button.setAttribute("role", "gridcell");
-      button.disabled = busy || tile === null || state.movesLeft === 0;
+      button.disabled = busy || tile === null || tile === BLOCKED_TILE || state.movesLeft === 0;
       button.dataset.row = String(rowIndex);
       button.dataset.column = String(columnIndex);
 
       const objectRow = rowIndex - OBJECT_TOP;
       const objectColumn = columnIndex - OBJECT_LEFT;
-      const objectPiece = objectRow * OBJECT_SIZE + objectColumn;
       if (
         !objectCollected &&
         objectRow >= 0 &&
         objectRow < OBJECT_SIZE &&
         objectColumn >= 0 &&
-        objectColumn < OBJECT_SIZE &&
-        revealedPhotoPieces.has(objectPiece)
+        objectColumn < OBJECT_SIZE
       ) {
-        button.classList.add("photo-revealed");
+        button.classList.add("object-zone");
       }
 
-      if (tile) {
-        button.textContent = TILE_SYMBOLS[tile].symbol;
+      if (tile === BLOCKED_TILE) {
+        button.classList.add("blocked-cell");
+        button.setAttribute("aria-label", "Vom Katzenkarton belegt");
+      } else if (tile) {
+        const symbol = document.createElement("span");
+        symbol.className = "tile-symbol";
+        symbol.textContent = TILE_SYMBOLS[tile].symbol;
+        symbol.setAttribute("aria-hidden", "true");
+        button.append(symbol);
         button.setAttribute("aria-label", `${TILE_SYMBOLS[tile].name}, Reihe ${rowIndex + 1}, Spalte ${columnIndex + 1}`);
       } else {
         button.setAttribute("aria-label", "Leeres Feld");
@@ -475,12 +509,27 @@ function render() {
       elements.board.append(button);
     });
   });
-  newRevealFrom = revealedPieces;
+  newlyRevealedObjectPieces.clear();
 }
 
-function renderCatReveal(previousCount = revealedPieces) {
-  newRevealFrom = previousCount;
-  elements.revealCount.textContent = objectCollected ? "✓" : `${revealedPieces}/9`;
+function renderObjectProgress() {
+  elements.revealCount.textContent = objectCollected ? "✓" : `${revealedObjectPieces.size}/4`;
+}
+
+function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
+  for (let pieceIndex = 0; pieceIndex < OBJECT_CELLS.length; pieceIndex += 1) {
+    const { row, column } = OBJECT_CELLS[pieceIndex];
+    if (
+      beforeBoard[row][column] !== null &&
+      beforeBoard[row][column] !== BLOCKED_TILE &&
+      clearedBoard[row][column] === null &&
+      !revealedObjectPieces.has(pieceIndex)
+    ) {
+      revealedObjectPieces.add(pieceIndex);
+      newlyRevealedObjectPieces.add(pieceIndex);
+    }
+  }
+  renderObjectProgress();
 }
 
 function showGameOver() {
@@ -507,7 +556,7 @@ async function collectRevealedObject() {
   document.body.append(flyer);
 
   objectCollected = true;
-  renderCatReveal();
+  renderObjectProgress();
   render();
   setMessage("Milo gefunden! 🐾");
 
@@ -597,6 +646,7 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
 
     if (hasGap) {
       await animateClears(previousBoard, frame.board);
+      revealObjectUnderClearedTiles(previousBoard, frame.board);
       state = frame;
       render();
       pulseScore();
@@ -614,10 +664,7 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   }
 
   busy = false;
-  const previousRevealCount = revealedPieces;
-  revealedPieces = Math.min(9, revealedPieces + Math.max(1, Math.floor(result.removedTiles / 3)));
-  renderCatReveal(previousRevealCount);
-  const discoveredNow = revealedPieces === 9 && !objectCollected;
+  const discoveredNow = revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected;
   setMessage(
     result.reshuffled
       ? `+${gainedPoints} Punkte · Brett neu gemischt`
@@ -634,7 +681,7 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
 
 function tileAtPoint(clientX, clientY) {
   const tile = document.elementFromPoint(clientX, clientY)?.closest(".tile");
-  if (!tile || !elements.board.contains(tile)) return null;
+  if (!tile || tile.disabled || !elements.board.contains(tile)) return null;
   return {
     element: tile,
     position: { row: Number(tile.dataset.row), column: Number(tile.dataset.column) },

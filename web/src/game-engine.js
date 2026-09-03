@@ -1,6 +1,7 @@
 export const BOARD_SIZE = 8;
 export const STARTING_MOVES = 25;
 export const TILE_TYPES = ["cat", "paw", "fish", "yarn", "mouse", "bell"];
+export const BLOCKED_TILE = "blocked";
 
 const copyBoard = (board) => board.map((row) => [...row]);
 const positionKey = ({ row, column }) => `${row},${column}`;
@@ -10,14 +11,18 @@ export class GameEngine {
     this.random = random;
   }
 
-  newGame() {
+  newGame(blockedPositions = []) {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      const board = this.createBoardWithoutMatches();
+      const board = this.createBoardWithoutMatches(blockedPositions);
       if (this.hasPossibleMove(board)) {
         return { board, score: 0, movesLeft: STARTING_MOVES };
       }
     }
-    return { board: this.createBoardWithoutMatches(), score: 0, movesLeft: STARTING_MOVES };
+    return {
+      board: this.createBoardWithoutMatches(blockedPositions),
+      score: 0,
+      movesLeft: STARTING_MOVES,
+    };
   }
 
   trySwap(state, first, second) {
@@ -25,6 +30,8 @@ export class GameEngine {
       state.movesLeft <= 0 ||
       !this.isInside(state.board, first) ||
       !this.isInside(state.board, second) ||
+      state.board[first.row][first.column] === BLOCKED_TILE ||
+      state.board[second.row][second.column] === BLOCKED_TILE ||
       Math.abs(first.row - second.row) + Math.abs(first.column - second.column) !== 1
     ) {
       return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
@@ -80,7 +87,7 @@ export class GameEngine {
         const tile = board[row][start];
         let end = start + 1;
         while (end < columnCount && tile !== null && board[row][end] === tile) end += 1;
-        if (tile !== null && end - start >= 3) {
+        if (tile !== null && tile !== BLOCKED_TILE && end - start >= 3) {
           for (let column = start; column < end; column += 1) {
             matches.add(positionKey({ row, column }));
           }
@@ -95,7 +102,7 @@ export class GameEngine {
         const tile = board[start][column];
         let end = start + 1;
         while (end < rowCount && tile !== null && board[end][column] === tile) end += 1;
-        if (tile !== null && end - start >= 3) {
+        if (tile !== null && tile !== BLOCKED_TILE && end - start >= 3) {
           for (let row = start; row < end; row += 1) {
             matches.add(positionKey({ row, column }));
           }
@@ -119,6 +126,12 @@ export class GameEngine {
 
         for (const neighbour of neighbours) {
           if (!this.isInside(candidate, neighbour)) continue;
+          if (
+            candidate[current.row][current.column] === BLOCKED_TILE ||
+            candidate[neighbour.row][neighbour.column] === BLOCKED_TILE
+          ) {
+            continue;
+          }
           this.swap(candidate, current, neighbour);
           const createsMatch = this.findMatches(candidate).size > 0;
           this.swap(candidate, current, neighbour);
@@ -129,10 +142,15 @@ export class GameEngine {
     return false;
   }
 
-  createBoardWithoutMatches() {
+  createBoardWithoutMatches(blockedPositions = []) {
+    const blocked = new Set(blockedPositions.map(positionKey));
     const board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
     for (let row = 0; row < BOARD_SIZE; row += 1) {
       for (let column = 0; column < BOARD_SIZE; column += 1) {
+        if (blocked.has(positionKey({ row, column }))) {
+          board[row][column] = BLOCKED_TILE;
+          continue;
+        }
         const candidates = TILE_TYPES.filter((tile) => {
           const horizontal =
             column >= 2 && board[row][column - 1] === tile && board[row][column - 2] === tile;
@@ -150,20 +168,51 @@ export class GameEngine {
     const rowCount = board.length;
     const columnCount = board[0]?.length ?? 0;
     for (let column = 0; column < columnCount; column += 1) {
-      let destination = rowCount - 1;
-      for (let row = rowCount - 1; row >= 0; row -= 1) {
-        const tile = board[row][column];
-        if (tile !== null) {
-          board[destination][column] = tile;
-          if (destination !== row) board[row][column] = null;
-          destination -= 1;
+      let segmentBottom = rowCount - 1;
+      for (let row = rowCount - 1; row >= -1; row -= 1) {
+        if (row === -1 || board[row][column] === BLOCKED_TILE) {
+          this.collapseSegment(board, column, row + 1, segmentBottom);
+          segmentBottom = row - 1;
         }
       }
-      while (destination >= 0) {
-        board[destination][column] = this.pick(TILE_TYPES);
+    }
+  }
+
+  collapseSegment(board, column, top, bottom) {
+    if (top > bottom) return;
+    let destination = bottom;
+    for (let row = bottom; row >= top; row -= 1) {
+      const tile = board[row][column];
+      if (tile !== null && tile !== BLOCKED_TILE) {
+        board[destination][column] = tile;
+        if (destination !== row) board[row][column] = null;
         destination -= 1;
       }
     }
+    while (destination >= top) {
+      board[destination][column] = this.pick(TILE_TYPES);
+      destination -= 1;
+    }
+  }
+
+  unlockCells(state, positions) {
+    const board = copyBoard(state.board);
+    for (const position of positions) {
+      if (board[position.row]?.[position.column] !== BLOCKED_TILE) continue;
+      board[position.row][position.column] = null;
+      const candidates = TILE_TYPES.filter((tile) => {
+        board[position.row][position.column] = tile;
+        const staysClean = this.findMatches(board).size === 0;
+        board[position.row][position.column] = null;
+        return staysClean;
+      });
+      board[position.row][position.column] = this.pick(candidates.length ? candidates : TILE_TYPES);
+    }
+
+    if (this.findMatches(board).size > 0 || !this.hasPossibleMove(board)) {
+      return { ...state, board: this.createBoardWithoutMatches() };
+    }
+    return { ...state, board };
   }
 
   pick(values) {
