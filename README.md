@@ -1,7 +1,7 @@
 # Catsdom – Pfoten-Puzzle
 
 Catsdom ist ein eigenständiger Katzen-Puzzle-Prototyp mit einem 8×8-Brett,
-sechs Symboltypen, Nachbar-Tausch, 3+-Erkennung, Kaskaden, Punkten und Zuglimit.
+sechs Symboltypen, Tap- und Drag-Steuerung, 3+-Erkennung, Kaskaden, Punkten und Zuglimit.
 
 ## Web-App testen
 

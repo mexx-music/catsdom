@@ -29,6 +29,8 @@ const engine = new GameEngine();
 let state = engine.newGame();
 let selected = null;
 let busy = false;
+let dragGesture = null;
+let suppressNextClick = false;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -50,7 +52,8 @@ function restartGame() {
   selected = null;
   busy = false;
   if (elements.dialog.open) elements.dialog.close();
-  setMessage("Wähle zwei benachbarte Felder");
+  clearDragHighlights();
+  setMessage("Tippe zwei Felder an oder ziehe ein Teil auf seinen Nachbarn");
   render();
 }
 
@@ -89,7 +92,10 @@ function render() {
         button.setAttribute("aria-pressed", "false");
       }
 
-      button.addEventListener("click", () => handleTileTap(position));
+      button.addEventListener("click", () => {
+        if (suppressNextClick) return;
+        handleTileTap(position);
+      });
       elements.board.append(button);
     });
   });
@@ -112,9 +118,13 @@ async function handleTileTap(position) {
     return;
   }
 
-  const result = engine.trySwap(state, selected, position);
+  await performSwap(selected, position, true);
+}
+
+async function performSwap(first, second, keepSecondSelectedOnFailure = false) {
+  const result = engine.trySwap(state, first, second);
   if (!result.accepted) {
-    selected = position;
+    selected = keepSecondSelectedOnFailure ? second : null;
     setMessage("Nur Nachbarn tauschen – die Reihe muss 3+ ergeben");
     render();
     return;
@@ -145,6 +155,91 @@ async function handleTileTap(position) {
     elements.dialog.showModal();
   }
 }
+
+function tileAtPoint(clientX, clientY) {
+  const tile = document.elementFromPoint(clientX, clientY)?.closest(".tile");
+  if (!tile || !elements.board.contains(tile)) return null;
+  return {
+    element: tile,
+    position: { row: Number(tile.dataset.row), column: Number(tile.dataset.column) },
+  };
+}
+
+function isAdjacent(first, second) {
+  return Math.abs(first.row - second.row) + Math.abs(first.column - second.column) === 1;
+}
+
+function clearDragHighlights() {
+  elements.board.querySelectorAll(".drag-source, .drag-target").forEach((tile) => {
+    tile.classList.remove("drag-source", "drag-target");
+  });
+}
+
+elements.board.addEventListener("pointerdown", (event) => {
+  if (busy || state.movesLeft === 0 || event.button > 0) return;
+  const target = tileAtPoint(event.clientX, event.clientY);
+  if (!target) return;
+
+  dragGesture = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    start: target.position,
+    dragging: false,
+  };
+  elements.board.setPointerCapture(event.pointerId);
+});
+
+elements.board.addEventListener("pointermove", (event) => {
+  if (!dragGesture || dragGesture.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - dragGesture.startX, event.clientY - dragGesture.startY);
+  if (!dragGesture.dragging && distance < 8) return;
+
+  dragGesture.dragging = true;
+  clearDragHighlights();
+  const source = elements.board.querySelector(
+    `[data-row="${dragGesture.start.row}"][data-column="${dragGesture.start.column}"]`,
+  );
+  source?.classList.add("drag-source");
+
+  const target = tileAtPoint(event.clientX, event.clientY);
+  if (target && isAdjacent(dragGesture.start, target.position)) {
+    target.element.classList.add("drag-target");
+    setMessage("Loslassen zum Tauschen");
+  } else {
+    setMessage("Auf ein direktes Nachbarfeld ziehen");
+  }
+});
+
+elements.board.addEventListener("pointerup", async (event) => {
+  if (!dragGesture || dragGesture.pointerId !== event.pointerId) return;
+  const gesture = dragGesture;
+  dragGesture = null;
+
+  if (!gesture.dragging) return;
+  suppressNextClick = true;
+  window.setTimeout(() => {
+    suppressNextClick = false;
+  }, 0);
+
+  const target = tileAtPoint(event.clientX, event.clientY);
+  clearDragHighlights();
+  if (!target || !isAdjacent(gesture.start, target.position)) {
+    selected = null;
+    setMessage("Ziehe ein Teil auf ein direktes Nachbarfeld");
+    render();
+    return;
+  }
+
+  selected = null;
+  await performSwap(gesture.start, target.position);
+});
+
+elements.board.addEventListener("pointercancel", () => {
+  dragGesture = null;
+  clearDragHighlights();
+  setMessage("Ziehen abgebrochen");
+});
 
 elements.startButton.addEventListener("click", showGame);
 elements.backButton.addEventListener("click", showStart);
