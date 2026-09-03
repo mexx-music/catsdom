@@ -26,9 +26,6 @@ const elements = {
   installButton: document.querySelector("#install-button"),
   pwaNote: document.querySelector("#pwa-note"),
   revealCount: document.querySelector("#reveal-count"),
-  catRevealDialog: document.querySelector("#cat-reveal-dialog"),
-  catRevealClose: document.querySelector("#cat-reveal-close"),
-  catRevealContinue: document.querySelector("#cat-reveal-continue"),
 };
 
 const engine = new GameEngine();
@@ -39,10 +36,13 @@ let dragGesture = null;
 let suppressNextClick = false;
 let deferredInstallPrompt = null;
 let revealedPieces = 0;
-let catDiscovered = false;
+let objectCollected = false;
 let newRevealFrom = 0;
 
 const REVEAL_ORDER = [4, 0, 8, 2, 6, 1, 7, 3, 5];
+const OBJECT_TOP = 2;
+const OBJECT_LEFT = 2;
+const OBJECT_SIZE = 3;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -374,7 +374,6 @@ function pulseScore() {
 
 function showStart() {
   elements.dialog.close?.();
-  elements.catRevealDialog.close?.();
   elements.startScreen.hidden = false;
   elements.gameScreen.hidden = true;
 }
@@ -390,9 +389,8 @@ function restartGame() {
   selected = null;
   busy = false;
   revealedPieces = 0;
-  catDiscovered = false;
+  objectCollected = false;
   if (elements.dialog.open) elements.dialog.close();
-  if (elements.catRevealDialog.open) elements.catRevealDialog.close();
   clearDragHighlights();
   setMessage("Tippe zwei Felder an oder ziehe ein Teil auf seinen Nachbarn");
   renderCatReveal();
@@ -409,23 +407,27 @@ function render() {
   elements.board.setAttribute("aria-busy", String(busy));
   elements.board.replaceChildren();
 
-  const photoLayer = document.createElement("div");
-  photoLayer.className = "board-photo";
-  photoLayer.setAttribute("aria-hidden", "true");
+  const objectLayer = document.createElement("div");
+  objectLayer.className = "board-object";
+  objectLayer.setAttribute("aria-hidden", "true");
   const revealedPhotoPieces = new Set(REVEAL_ORDER.slice(0, revealedPieces));
-  for (let pieceIndex = 0; pieceIndex < 9; pieceIndex += 1) {
+  for (let pieceIndex = 0; pieceIndex < OBJECT_SIZE ** 2 && !objectCollected; pieceIndex += 1) {
     const piece = document.createElement("span");
     const revealPosition = REVEAL_ORDER.indexOf(pieceIndex);
-    piece.className = "board-photo-piece";
+    const objectRow = Math.floor(pieceIndex / OBJECT_SIZE);
+    const objectColumn = pieceIndex % OBJECT_SIZE;
+    piece.className = "board-object-piece";
+    piece.style.gridRow = String(OBJECT_TOP + objectRow + 1);
+    piece.style.gridColumn = String(OBJECT_LEFT + objectColumn + 1);
     piece.style.setProperty("--photo-x", `${(pieceIndex % 3) * 50}%`);
     piece.style.setProperty("--photo-y", `${Math.floor(pieceIndex / 3) * 50}%`);
     if (revealPosition < revealedPieces) piece.classList.add("revealed");
     if (revealPosition >= newRevealFrom && revealPosition < revealedPieces) {
       piece.classList.add("newly-revealed");
     }
-    photoLayer.append(piece);
+    objectLayer.append(piece);
   }
-  elements.board.append(photoLayer);
+  elements.board.append(objectLayer);
 
   state.board.forEach((row, rowIndex) => {
     row.forEach((tile, columnIndex) => {
@@ -438,9 +440,17 @@ function render() {
       button.dataset.row = String(rowIndex);
       button.dataset.column = String(columnIndex);
 
-      const photoRow = Math.min(2, Math.floor((rowIndex * 3) / state.board.length));
-      const photoColumn = Math.min(2, Math.floor((columnIndex * 3) / row.length));
-      if (revealedPhotoPieces.has(photoRow * 3 + photoColumn)) {
+      const objectRow = rowIndex - OBJECT_TOP;
+      const objectColumn = columnIndex - OBJECT_LEFT;
+      const objectPiece = objectRow * OBJECT_SIZE + objectColumn;
+      if (
+        !objectCollected &&
+        objectRow >= 0 &&
+        objectRow < OBJECT_SIZE &&
+        objectColumn >= 0 &&
+        objectColumn < OBJECT_SIZE &&
+        revealedPhotoPieces.has(objectPiece)
+      ) {
         button.classList.add("photo-revealed");
       }
 
@@ -470,7 +480,7 @@ function render() {
 
 function renderCatReveal(previousCount = revealedPieces) {
   newRevealFrom = previousCount;
-  elements.revealCount.textContent = `${revealedPieces}/9`;
+  elements.revealCount.textContent = objectCollected ? "✓" : `${revealedPieces}/9`;
 }
 
 function showGameOver() {
@@ -478,9 +488,50 @@ function showGameOver() {
   elements.dialog.showModal();
 }
 
-function closeCatReveal() {
-  if (elements.catRevealDialog.open) elements.catRevealDialog.close();
-  if (state.movesLeft === 0) showGameOver();
+async function collectRevealedObject() {
+  const firstTile = tileElement({ row: OBJECT_TOP, column: OBJECT_LEFT });
+  const lastTile = tileElement({
+    row: OBJECT_TOP + OBJECT_SIZE - 1,
+    column: OBJECT_LEFT + OBJECT_SIZE - 1,
+  });
+  if (!firstTile || !lastTile) return;
+
+  const firstRect = firstTile.getBoundingClientRect();
+  const lastRect = lastTile.getBoundingClientRect();
+  const flyer = document.createElement("div");
+  flyer.className = "collected-photo";
+  flyer.style.left = `${firstRect.left}px`;
+  flyer.style.top = `${firstRect.top}px`;
+  flyer.style.width = `${lastRect.right - firstRect.left}px`;
+  flyer.style.height = `${lastRect.bottom - firstRect.top}px`;
+  document.body.append(flyer);
+
+  objectCollected = true;
+  renderCatReveal();
+  render();
+  setMessage("Milo gefunden! 🐾");
+
+  if (reducedMotion) {
+    flyer.remove();
+    return;
+  }
+
+  const travelX = window.innerWidth - firstRect.left + firstRect.width;
+  const travelY = -firstRect.top - (lastRect.bottom - firstRect.top) * 1.1;
+  await waitForAnimation(
+    flyer.animate(
+      [
+        { opacity: 1, transform: "translate3d(0,0,0) scale(1) rotate(0deg)" },
+        { opacity: 1, transform: "translate3d(0,0,0) scale(1.14) rotate(-3deg)", offset: 0.2 },
+        {
+          opacity: 0.82,
+          transform: `translate3d(${travelX}px,${travelY}px,0) scale(.72) rotate(14deg)`,
+        },
+      ],
+      { duration: 1550, easing: "cubic-bezier(.22,.62,.28,1)", fill: "forwards" },
+    ),
+  );
+  flyer.remove();
 }
 
 async function handleTileTap(position) {
@@ -566,8 +617,7 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   const previousRevealCount = revealedPieces;
   revealedPieces = Math.min(9, revealedPieces + Math.max(1, Math.floor(result.removedTiles / 3)));
   renderCatReveal(previousRevealCount);
-  const discoveredNow = revealedPieces === 9 && !catDiscovered;
-  if (discoveredNow) catDiscovered = true;
+  const discoveredNow = revealedPieces === 9 && !objectCollected;
   setMessage(
     result.reshuffled
       ? `+${gainedPoints} Punkte · Brett neu gemischt`
@@ -576,8 +626,9 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   render();
 
   if (discoveredNow) {
-    await sleep(reducedMotion ? 0 : 520);
-    elements.catRevealDialog.showModal();
+    await sleep(reducedMotion ? 0 : 380);
+    await collectRevealedObject();
+    if (state.movesLeft === 0) showGameOver();
   } else if (state.movesLeft === 0) showGameOver();
 }
 
@@ -682,8 +733,6 @@ elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
 elements.playAgainButton.addEventListener("click", restartGame);
 elements.dialogHomeButton.addEventListener("click", showStart);
-elements.catRevealClose.addEventListener("click", closeCatReveal);
-elements.catRevealContinue.addEventListener("click", closeCatReveal);
 
 const isAppleTouchDevice =
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
