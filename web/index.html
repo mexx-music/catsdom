@@ -4,12 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fff2dd" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Catsdom" />
     <meta
       name="description"
       content="Catsdom Pfoten-Puzzle – ein eigenständiger Katzen-Puzzle-Prototyp."
     />
     <title>Catsdom – Pfoten-Puzzle</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="manifest" href="./manifest.webmanifest?v=4" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <main class="app-shell">
@@ -27,6 +33,10 @@
           Ziehe süße Katzensachen auf ein Nachbarfeld und bilde Reihen aus drei oder mehr Teilen.
         </p>
         <button id="start-button" class="primary-button" type="button">Losspielen</button>
+        <button id="install-button" class="install-button" type="button" hidden>
+          Als App installieren
+        </button>
+        <p id="pwa-note" class="pwa-note" hidden></p>
         <p class="game-facts">25 Züge · 6 Symboltypen · endlose Kombinationen</p>
       </section>
 
@@ -76,6 +86,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=2"></script>
+    <script type="module" src="./src/app.js?v=4"></script>
   </body>
 </html>

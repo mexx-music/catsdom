@@ -21,6 +21,10 @@ cd web
 npm test
 ```
 
+Die Web-App ist als PWA installierbar. Auf iPad und iPhone lässt sie sich über
+`Teilen → Zum Home-Bildschirm` hinzufügen und anschließend im Vollbild sowie
+nach dem ersten vollständigen Laden auch offline starten.
+
 ## Android-App
 
 Das vorhandene Android-Studio-Projekt bleibt unverändert aufgebaut. Ein

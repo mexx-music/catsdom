@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Catsdom App-Icon">
+  <rect width="512" height="512" rx="112" fill="#7a4e8e"/>
+  <g opacity=".14" fill="#fff">
+    <rect x="54" y="54" width="116" height="116" rx="28"/>
+    <rect x="183" y="54" width="116" height="116" rx="28"/>
+    <rect x="312" y="54" width="146" height="116" rx="28"/>
+    <rect x="54" y="183" width="116" height="146" rx="28"/>
+    <rect x="342" y="183" width="116" height="146" rx="28"/>
+    <rect x="54" y="342" width="146" height="116" rx="28"/>
+    <rect x="213" y="342" width="116" height="116" rx="28"/>
+    <rect x="342" y="342" width="116" height="116" rx="28"/>
+  </g>
+  <path d="M153 221 174 119l78 67c3 0 5-1 8-1l78-66 21 102c27 31 43 73 43 119 0 88-65 128-146 128s-146-40-146-128c0-46 16-88 43-119Z" fill="#ffa45b"/>
+  <path d="m177 181 10-38 31 34Z" fill="#ffdfb5"/>
+  <path d="m335 181-10-38-31 34Z" fill="#ffdfb5"/>
+  <ellipse cx="205" cy="315" rx="17" ry="22" fill="#3e3150"/>
+  <ellipse cx="307" cy="315" rx="17" ry="22" fill="#3e3150"/>
+  <circle cx="211" cy="308" r="5" fill="#fff"/>
+  <circle cx="313" cy="308" r="5" fill="#fff"/>
+  <path d="M239 355c0-14 34-14 34 0 0 8-8 17-17 17s-17-9-17-17Z" fill="#ff6f77"/>
+  <path d="M256 372v19m0 0c-13 0-22-7-27-15m27 15c13 0 22-7 27-15" fill="none" stroke="#3e3150" stroke-width="8" stroke-linecap="round"/>
+  <g fill="none" stroke="#fff8ed" stroke-width="7" stroke-linecap="round" opacity=".9">
+    <path d="M213 363 128 346m87 40-82 11"/>
+    <path d="m299 363 85-17m-87 40 82 11"/>
+  </g>
+</svg>

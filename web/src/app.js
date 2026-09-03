@@ -23,6 +23,8 @@ const elements = {
   finalScore: document.querySelector("#final-score"),
   playAgainButton: document.querySelector("#play-again-button"),
   dialogHomeButton: document.querySelector("#dialog-home-button"),
+  installButton: document.querySelector("#install-button"),
+  pwaNote: document.querySelector("#pwa-note"),
 };
 
 const engine = new GameEngine();
@@ -31,6 +33,7 @@ let selected = null;
 let busy = false;
 let dragGesture = null;
 let suppressNextClick = false;
+let deferredInstallPrompt = null;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -246,5 +249,52 @@ elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
 elements.playAgainButton.addEventListener("click", restartGame);
 elements.dialogHomeButton.addEventListener("click", showStart);
+
+const isAppleTouchDevice =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone =
+  window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+if (isAppleTouchDevice && !isStandalone) {
+  elements.installButton.hidden = false;
+  elements.pwaNote.hidden = false;
+  elements.pwaNote.textContent = "Auf iPad/iPhone: Teilen antippen und ‚Zum Home-Bildschirm‘ wählen.";
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  elements.installButton.hidden = false;
+});
+
+elements.installButton.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) {
+    elements.pwaNote.hidden = false;
+    elements.pwaNote.textContent = isAppleTouchDevice
+      ? "In Safari: Teilen antippen und ‚Zum Home-Bildschirm‘ wählen."
+      : "Im Browsermenü ‚App installieren‘ oder ‚Zum Startbildschirm hinzufügen‘ wählen.";
+    return;
+  }
+
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  if (choice.outcome === "accepted") elements.installButton.hidden = true;
+});
+
+window.addEventListener("appinstalled", () => {
+  elements.installButton.hidden = true;
+  elements.pwaNote.hidden = false;
+  elements.pwaNote.textContent = "Catsdom wurde installiert und kann vom Homescreen gestartet werden.";
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js", { scope: "./" }).catch(() => {
+      // Das Spiel bleibt auch ohne Offline-Modus vollständig nutzbar.
+    });
+  });
+}
 
 render();

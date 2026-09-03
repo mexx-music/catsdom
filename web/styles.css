@@ -170,8 +170,35 @@ button:focus-visible {
   font-size: 1rem;
 }
 
-.game-facts {
+.install-button {
+  min-height: 46px;
   margin-top: 24px;
+  padding: 0 22px;
+  border: 2px solid rgba(122, 78, 142, 0.28);
+  border-radius: 16px;
+  color: #7a4e8e;
+  background: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  font-weight: 800;
+  transition: background 120ms ease, transform 120ms ease;
+}
+
+.install-button:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.pwa-note {
+  max-width: 390px;
+  margin: 14px 0 0;
+  color: rgba(62, 49, 80, 0.76);
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.game-facts {
+  margin-top: 20px;
   color: #7a4e8e;
   font-size: 0.82rem;
   font-weight: 700;
