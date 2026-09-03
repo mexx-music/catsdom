@@ -42,7 +42,7 @@ export class GameEngine {
     this.swap(board, first, second);
 
     if (firstTile === PAW_BOMB || secondTile === PAW_BOMB) {
-      return this.activatePawBomb(state, board, first, second, firstTile, secondTile);
+      return this.activatePawBombSwap(state, board, first, second, firstTile, secondTile);
     }
 
     let matches = this.findMatches(board);
@@ -166,13 +166,25 @@ export class GameEngine {
     return { score, removedTiles, createdSpecials };
   }
 
-  activatePawBomb(state, board, first, second, firstTile, secondTile) {
+  activatePawBombAt(state, position) {
+    if (!this.isInside(state.board, position) || state.board[position.row][position.column] !== PAW_BOMB) {
+      return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
+    }
+    return this.detonatePawBombs(state, copyBoard(state.board), [position]);
+  }
+
+  activatePawBombSwap(state, board, first, second, firstTile, secondTile) {
+    const centers = [firstTile === PAW_BOMB ? second : first];
+    if (firstTile === PAW_BOMB && secondTile === PAW_BOMB) {
+      centers.push(secondTile === PAW_BOMB ? first : second);
+    }
+    return this.detonatePawBombs(state, board, centers);
+  }
+
+  detonatePawBombs(state, board, centers) {
     const moves = state.moves + 1;
     const frames = [{ board: copyBoard(board), score: state.score, moves }];
-    const firstCenter = firstTile === PAW_BOMB ? second : first;
-    const secondCenter = secondTile === PAW_BOMB ? first : second;
-    const queue = [firstCenter];
-    if (firstTile === PAW_BOMB && secondTile === PAW_BOMB) queue.push(secondCenter);
+    const queue = [...centers];
     const detonated = new Set();
     const cleared = new Set();
 

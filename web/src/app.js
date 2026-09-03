@@ -1,4 +1,4 @@
-import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=18";
+import { BLOCKED_TILE, BOARD_SIZE, GameEngine, PAW_BOMB } from "./game-engine.js?v=19";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -572,6 +572,12 @@ async function completeCatReveal() {
 async function handleTileTap(position) {
   if (busy || objectCollected) return;
 
+  if (state.board[position.row][position.column] === PAW_BOMB) {
+    selected = null;
+    await performBombTap(position);
+    return;
+  }
+
   if (!selected) {
     selected = position;
     setMessage("Jetzt ein Nachbarfeld wählen");
@@ -622,6 +628,21 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
     await animateSwap(first, second);
   }
 
+  await playAcceptedResult(result, gainedPoints);
+}
+
+async function performBombTap(position) {
+  const result = engine.activatePawBombAt(state, position);
+  if (!result.accepted) return;
+
+  const gainedPoints = result.frames.at(-1).score - state.score;
+  busy = true;
+  setMessage("Mini-Pfotenbombe wird gezündet …");
+  elements.board.setAttribute("aria-busy", "true");
+  await playAcceptedResult(result, gainedPoints);
+}
+
+async function playAcceptedResult(result, gainedPoints) {
   state = result.frames[0];
   render();
   let previousBoard = state.board;
