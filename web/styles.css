@@ -362,6 +362,24 @@ button:focus-visible {
   text-align: center;
 }
 
+button.cat-card {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+button.cat-card:hover,
+button.cat-card:focus-visible {
+  border-color: rgba(255, 128, 109, 0.82);
+  box-shadow: 0 10px 26px rgba(255, 128, 109, 0.22);
+  transform: translateY(-2px);
+}
+
+button.cat-card:active {
+  transform: scale(0.98);
+}
+
 .cat-card.active {
   border-color: rgba(255, 128, 109, 0.7);
   box-shadow: 0 8px 24px rgba(255, 128, 109, 0.2);

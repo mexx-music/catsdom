@@ -12,6 +12,7 @@ import {
   normalizeCatProgress,
   revealCatTiles,
   saveCatProgress,
+  selectActiveCat,
 } from "../src/cat-progress.js";
 
 function memoryStorage() {
@@ -42,6 +43,27 @@ test("spatial reveal tiles are deduplicated and persist locally", () => {
   assert.equal(saveCatProgress(progress, storage), true);
   assert.deepEqual(loadCatProgress(storage).revealByCat.cat_01, [0, 7, 63]);
   assert.ok(storage.getItem(CAT_PROGRESS_STORAGE_KEY));
+});
+
+test("any undiscovered cat can be selected while every cat keeps its reveal progress", () => {
+  let progress = revealCatTiles(createInitialCatProgress(), "cat_01", [0, 7, 63]);
+  progress = selectActiveCat(progress, "cat_08");
+
+  assert.equal(getActiveCat(progress).name, "Bella");
+  assert.deepEqual(progress.revealByCat.cat_01, [0, 7, 63]);
+  assert.deepEqual(progress.revealByCat.cat_08, []);
+
+  progress = revealCatTiles(progress, "cat_08", [4, 5]);
+  progress = selectActiveCat(progress, "cat_01");
+  assert.deepEqual(progress.revealByCat.cat_08, [4, 5]);
+  assert.deepEqual(progress.revealByCat.cat_01, [0, 7, 63]);
+});
+
+test("discovered and unknown cats cannot become active again", () => {
+  const discovered = discoverActiveCat(createInitialCatProgress()).progress;
+
+  assert.equal(selectActiveCat(discovered, "cat_01").activeCatId, "cat_02");
+  assert.equal(selectActiveCat(discovered, "missing").activeCatId, "cat_02");
 });
 
 test("discovering a cat completes its image and advances to the next cat", () => {

@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=30";
+} from "./game-engine.js?v=31";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -12,13 +12,14 @@ import {
   loadCatProgress,
   revealCatTiles,
   saveCatProgress,
-} from "./cat-progress.js?v=30";
+  selectActiveCat,
+} from "./cat-progress.js?v=31";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=30";
-import { CatAssetStore } from "./cat-asset-store.js?v=30";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=30";
+} from "./cat-catalog-repository.js?v=31";
+import { CatAssetStore } from "./cat-asset-store.js?v=31";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=31";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -96,7 +97,7 @@ let objectCollected = false;
 let catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
 let activeCat = getActiveCat(catProgress, catCatalog);
 let collectionReturnScreen = "start";
-let nextCatAfterCompletion = null;
+let collectionSelectionBusy = false;
 let contentReady = null;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -852,13 +853,22 @@ function renderCollection() {
   elements.catGrid.replaceChildren();
 
   for (const cat of cats) {
-    const card = document.createElement("article");
+    const card = document.createElement(cat.isDiscovered ? "article" : "button");
+    if (!cat.isDiscovered) {
+      card.type = "button";
+      card.disabled = collectionSelectionBusy;
+      card.addEventListener("click", () => selectCatForPlay(cat.id));
+    }
     card.className = `cat-card${cat.isDiscovered ? " discovered" : " covered"}${
       cat.isActive ? " active" : ""
     }`;
     card.setAttribute(
       "aria-label",
-      cat.isDiscovered ? `${cat.name}, entdeckt` : cat.isActive ? `${cat.name}, wird entdeckt` : `${cat.name}, noch verborgen`,
+      cat.isDiscovered
+        ? `${cat.name}, entdeckt`
+        : cat.isActive
+          ? `${cat.name}, ausgewählt, ${cat.revealProgress} von 64 freigelegt`
+          : `${cat.name} auswählen und freispielen`,
     );
 
     const portrait = document.createElement("div");
@@ -888,7 +898,7 @@ function renderCollection() {
     } else {
       const cover = document.createElement("span");
       cover.className = "cat-card-cover";
-      cover.textContent = cat.isActive ? "🐾" : "🔒";
+      cover.textContent = cat.isActive ? "🐾" : "🐱";
       cover.setAttribute("aria-hidden", "true");
       portrait.append(cover);
     }
@@ -897,17 +907,51 @@ function renderCollection() {
     name.textContent = cat.name;
     card.append(portrait, name);
 
-    if (cat.isActive) {
+    if (!cat.isDiscovered) {
       const status = document.createElement("p");
-      status.textContent =
-        cat.isDownloadable && catAssetStore.getDownloadState(cat) !== "downloaded"
-          ? "Download beim Start"
-          : `${cat.revealProgress}/64 freigelegt`;
+      if (cat.isActive) {
+        status.textContent =
+          cat.isDownloadable && catAssetStore.getDownloadState(cat) !== "downloaded"
+            ? "Antippen zum Laden"
+            : `${cat.revealProgress}/64 freigelegt · spielen`;
+      } else {
+        status.textContent =
+          cat.revealProgress > 0
+            ? `${cat.revealProgress}/64 freigelegt · weiterspielen`
+            : "Antippen zum Freispielen";
+      }
       card.append(status);
     }
 
     elements.catGrid.append(card);
   }
+}
+
+async function selectCatForPlay(catId) {
+  if (collectionSelectionBusy) return;
+  const selectedProgress = selectActiveCat(catProgress, catId, catCatalog);
+  if (selectedProgress.activeCatId !== catId) return;
+
+  catProgress = selectedProgress;
+  saveCatProgress(catProgress);
+  activeCat = getActiveCat(catProgress, catCatalog);
+  collectionSelectionBusy = true;
+  renderCollection();
+  elements.collectionProgress.textContent = `${activeCat.name} wird vorbereitet …`;
+
+  const ready = await prepareCatForPlay(activeCat);
+  collectionSelectionBusy = false;
+  if (!ready) {
+    renderCollection();
+    elements.collectionProgress.textContent = `${activeCat.name} konnte nicht geladen werden`;
+    return;
+  }
+
+  elements.startScreen.hidden = true;
+  elements.collectionScreen.hidden = true;
+  elements.gameScreen.hidden = false;
+  elements.catGrid.replaceChildren();
+  restartGame();
 }
 
 function restartGame() {
@@ -926,7 +970,6 @@ function restartGame() {
   revealedObjectPieces = new Set(catProgress.revealByCat[activeCat.id] ?? []);
   newlyRevealedObjectPieces = new Set();
   objectCollected = false;
-  nextCatAfterCompletion = null;
   if (elements.dialog.open) elements.dialog.close();
   clearDragHighlights();
   setMessage(`Lege ${activeCat.name} Feld für Feld frei`);
@@ -1054,11 +1097,11 @@ function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
   renderObjectProgress();
 }
 
-function showGameOver(completedCat, nextCat) {
+function showGameOver(completedCat) {
   elements.finalScore.textContent = state.score.toLocaleString("de-DE");
   elements.finalMoves.textContent = state.moves.toLocaleString("de-DE");
   elements.completionTitle.textContent = `${completedCat.name} entdeckt! 🐾`;
-  elements.playAgainButton.textContent = nextCat ? "Nächste Katze" : "Meine Katzen";
+  elements.playAgainButton.textContent = "Katze auswählen";
   elements.dialog.showModal();
 }
 
@@ -1066,7 +1109,6 @@ async function completeCatReveal() {
   const completedCat = activeCat;
   const completion = discoverActiveCat(catProgress, catCatalog);
   catProgress = completion.progress;
-  nextCatAfterCompletion = completion.nextCat;
   saveCatProgress(catProgress);
   updateCollectionProgress();
   objectCollected = true;
@@ -1078,7 +1120,7 @@ async function completeCatReveal() {
   setMessage(`${completedCat.name} ist frei – geschafft in ${state.moves} Zügen! 🐾`);
 
   if (reducedMotion) {
-    showGameOver(completedCat, nextCatAfterCompletion);
+    showGameOver(completedCat);
     return;
   }
 
@@ -1093,7 +1135,7 @@ async function completeCatReveal() {
     ),
   );
   await sleep(900);
-  showGameOver(completedCat, nextCatAfterCompletion);
+  showGameOver(completedCat);
 }
 
 async function handleTileTap(position) {
@@ -1389,9 +1431,7 @@ elements.collectionBackButton.addEventListener("click", closeCollection);
 elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
 elements.playAgainButton.addEventListener("click", async () => {
-  const progress = loadCatProgress(globalThis.localStorage, catCatalog);
-  if (getActiveCat(progress, catCatalog)) await showGame();
-  else showCollection("start");
+  showCollection("start");
 });
 elements.dialogHomeButton.addEventListener("click", showStart);
 

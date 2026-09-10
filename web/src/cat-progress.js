@@ -75,6 +75,21 @@ export function getActiveCat(progress, cats = BUNDLED_CATS) {
   return cats.find((cat) => cat.id === progress.activeCatId) ?? null;
 }
 
+export function selectActiveCat(progress, catId, cats = BUNDLED_CATS) {
+  const normalized = normalizeCatProgress(progress, cats);
+  const selectedCat = cats.find((cat) => cat.id === catId);
+  if (!selectedCat || normalized.discoveredCatIds.includes(catId)) return normalized;
+
+  return {
+    ...normalized,
+    activeCatId: catId,
+    revealByCat: {
+      ...normalized.revealByCat,
+      [catId]: normalized.revealByCat[catId] ?? [],
+    },
+  };
+}
+
 export function revealCatTiles(progress, catId, tileIndices, cats = BUNDLED_CATS) {
   const normalized = normalizeCatProgress(progress, cats);
   if (normalized.activeCatId !== catId) return normalized;
@@ -132,7 +147,7 @@ export function getCatCollection(progress, cats = BUNDLED_CATS) {
         revealProgress,
         isDiscovered,
         isActive: cat.id === normalized.activeCatId,
-        isUnlocked: isDiscovered || cat.id === normalized.activeCatId,
+        isUnlocked: true,
       };
     });
 }
