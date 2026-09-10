@@ -1,5 +1,30 @@
 {
-  "catalogVersion": 1,
-  "collections": [],
-  "cats": []
+  "catalogVersion": 2,
+  "collections": [
+    {
+      "id": "catlab_cats",
+      "name": "CatLab Cats",
+      "version": 1
+    }
+  ],
+  "cats": [
+    {
+      "id": "catlab_murli_0001",
+      "name": "Murli",
+      "imageUrl": "../assets/cats/remote/catlab_murli_0001_v1_full.webp",
+      "thumbnailUrl": "../assets/cats/remote/catlab_murli_0001_v1_thumb.webp",
+      "imageType": "image/webp",
+      "sourceType": "catlab",
+      "collectionId": "catlab_cats",
+      "releaseDate": "2026-09-10T17:21:34.597Z",
+      "version": 1,
+      "isDownloadable": true,
+      "downloadSize": 420666,
+      "checksum": "6a58ada020f98e9724ba8e733d26db38146d36f2b83d709d96ed10b133b1cde2",
+      "moderationStatus": "published",
+      "unlockOrder": 10,
+      "country": "Rumänien",
+      "shortDescription": "Murli aus Afumați."
+    }
+  ]
 }

@@ -7,7 +7,7 @@ import {
 export { BUNDLED_CATALOG } from "./cat-content.js";
 
 export const CAT_CATALOG_CACHE_KEY = "catsdom.remoteCatalog.v1";
-export const CAT_CATALOG_SYNC_KEY = "catsdom.remoteCatalogLastSync.v1";
+export const CAT_CATALOG_SYNC_KEY = "catsdom.remoteCatalogLastSync.v2";
 export const DEFAULT_CATALOG_SYNC_INTERVAL = 6 * 60 * 60 * 1000;
 
 export class CatCatalogRepository {

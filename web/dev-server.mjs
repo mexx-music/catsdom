@@ -11,6 +11,7 @@ const contentTypes = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".webp": "image/webp",
 };
 
 const server = createServer(async (request, response) => {
