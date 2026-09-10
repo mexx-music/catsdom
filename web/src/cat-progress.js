@@ -1,17 +1,8 @@
+import { BUNDLED_CATS } from "./cat-content.js";
+
 export const REVEAL_TILE_COUNT = 64;
 export const CAT_PROGRESS_STORAGE_KEY = "catsdom.catCollection.v1";
-
-export const CAT_CONTENT = Object.freeze([
-  { id: "cat_01", name: "Luna", imageAsset: "./assets/cats/cat_01.webp", unlockOrder: 1 },
-  { id: "cat_02", name: "Milo", imageAsset: "./assets/cats/cat_02.webp", unlockOrder: 2 },
-  { id: "cat_03", name: "Nala", imageAsset: "./assets/cats/cat_03.webp", unlockOrder: 3 },
-  { id: "cat_04", name: "Leo", imageAsset: "./assets/cats/cat_04.webp", unlockOrder: 4 },
-  { id: "cat_05", name: "Coco", imageAsset: "./assets/cats/cat_05.webp", unlockOrder: 5 },
-  { id: "cat_06", name: "Mia", imageAsset: "./assets/cats/cat_06.webp", unlockOrder: 6 },
-  { id: "cat_07", name: "Loki", imageAsset: "./assets/cats/cat_07.webp", unlockOrder: 7 },
-  { id: "cat_08", name: "Bella", imageAsset: "./assets/cats/cat_08.webp", unlockOrder: 8 },
-  { id: "cat_09", name: "Suki", imageAsset: "./assets/cats/cat_09.webp", unlockOrder: 9 },
-]);
+export const CAT_CONTENT = BUNDLED_CATS;
 
 const allRevealTiles = () => Array.from({ length: REVEAL_TILE_COUNT }, (_, index) => index);
 
@@ -22,7 +13,7 @@ function cleanRevealTiles(value) {
     .sort((a, b) => a - b);
 }
 
-export function createInitialCatProgress(cats = CAT_CONTENT) {
+export function createInitialCatProgress(cats = BUNDLED_CATS) {
   const firstCat = [...cats].sort((a, b) => a.unlockOrder - b.unlockOrder)[0];
   return {
     version: 1,
@@ -32,13 +23,12 @@ export function createInitialCatProgress(cats = CAT_CONTENT) {
   };
 }
 
-export function normalizeCatProgress(value, cats = CAT_CONTENT) {
+export function normalizeCatProgress(value, cats = BUNDLED_CATS) {
   if (!value || typeof value !== "object") return createInitialCatProgress(cats);
 
   const orderedCats = [...cats].sort((a, b) => a.unlockOrder - b.unlockOrder);
-  const validIds = new Set(orderedCats.map((cat) => cat.id));
-  const discoveredCatIds = [...new Set(value.discoveredCatIds ?? [])].filter((id) =>
-    validIds.has(id),
+  const discoveredCatIds = [...new Set(value.discoveredCatIds ?? [])].filter(
+    (id) => typeof id === "string" && id.length >= 3 && id.length <= 64,
   );
   const discovered = new Set(discoveredCatIds);
   const firstUndiscovered = orderedCats.find((cat) => !discovered.has(cat.id));
@@ -46,7 +36,11 @@ export function normalizeCatProgress(value, cats = CAT_CONTENT) {
     (cat) => cat.id === value.activeCatId && !discovered.has(cat.id),
   );
   const activeCatId = requestedActive?.id ?? firstUndiscovered?.id ?? null;
-  const revealByCat = {};
+  const revealByCat = Object.fromEntries(
+    Object.entries(value.revealByCat ?? {})
+      .filter(([id]) => typeof id === "string" && id.length >= 3 && id.length <= 64)
+      .map(([id, tiles]) => [id, cleanRevealTiles(tiles)]),
+  );
 
   for (const cat of orderedCats) {
     if (discovered.has(cat.id)) {
@@ -59,7 +53,7 @@ export function normalizeCatProgress(value, cats = CAT_CONTENT) {
   return { version: 1, activeCatId, discoveredCatIds, revealByCat };
 }
 
-export function loadCatProgress(storage = globalThis.localStorage, cats = CAT_CONTENT) {
+export function loadCatProgress(storage = globalThis.localStorage, cats = BUNDLED_CATS) {
   try {
     const saved = storage?.getItem(CAT_PROGRESS_STORAGE_KEY);
     return saved ? normalizeCatProgress(JSON.parse(saved), cats) : createInitialCatProgress(cats);
@@ -77,11 +71,11 @@ export function saveCatProgress(progress, storage = globalThis.localStorage) {
   }
 }
 
-export function getActiveCat(progress, cats = CAT_CONTENT) {
+export function getActiveCat(progress, cats = BUNDLED_CATS) {
   return cats.find((cat) => cat.id === progress.activeCatId) ?? null;
 }
 
-export function revealCatTiles(progress, catId, tileIndices, cats = CAT_CONTENT) {
+export function revealCatTiles(progress, catId, tileIndices, cats = BUNDLED_CATS) {
   const normalized = normalizeCatProgress(progress, cats);
   if (normalized.activeCatId !== catId) return normalized;
 
@@ -95,7 +89,7 @@ export function revealCatTiles(progress, catId, tileIndices, cats = CAT_CONTENT)
   };
 }
 
-export function discoverActiveCat(progress, cats = CAT_CONTENT) {
+export function discoverActiveCat(progress, cats = BUNDLED_CATS) {
   const normalized = normalizeCatProgress(progress, cats);
   const completedCat = getActiveCat(normalized, cats);
   if (!completedCat) return { progress: normalized, completedCat: null, nextCat: null };
@@ -123,7 +117,7 @@ export function discoverActiveCat(progress, cats = CAT_CONTENT) {
   };
 }
 
-export function getCatCollection(progress, cats = CAT_CONTENT) {
+export function getCatCollection(progress, cats = BUNDLED_CATS) {
   const normalized = normalizeCatProgress(progress, cats);
   const discovered = new Set(normalized.discoveredCatIds);
   return [...cats]

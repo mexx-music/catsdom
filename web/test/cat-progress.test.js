@@ -9,6 +9,7 @@ import {
   getActiveCat,
   getCatCollection,
   loadCatProgress,
+  normalizeCatProgress,
   revealCatTiles,
   saveCatProgress,
 } from "../src/cat-progress.js";
@@ -81,4 +82,17 @@ test("invalid saved data safely falls back to the first valid cat", () => {
     JSON.stringify({ activeCatId: "missing", discoveredCatIds: [], revealByCat: {} }),
   );
   assert.equal(loadCatProgress(storage).activeCatId, "cat_01");
+});
+
+test("temporarily unavailable remote cats do not lose saved discovery data", () => {
+  const progress = normalizeCatProgress({
+    activeCatId: "cat_0011",
+    discoveredCatIds: ["cat_0010"],
+    revealByCat: { cat_0010: [0, 1, 2], cat_0011: [4, 7] },
+  });
+
+  assert.deepEqual(progress.discoveredCatIds, ["cat_0010"]);
+  assert.deepEqual(progress.revealByCat.cat_0010, [0, 1, 2]);
+  assert.deepEqual(progress.revealByCat.cat_0011, [4, 7]);
+  assert.equal(progress.activeCatId, "cat_01");
 });

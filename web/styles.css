@@ -239,6 +239,15 @@ button:focus-visible {
   font-weight: 700;
 }
 
+.content-status {
+  max-width: 390px;
+  margin: 14px 0 0;
+  color: #7a4e8e;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
 .game-screen {
   display: flex;
   flex-direction: column;

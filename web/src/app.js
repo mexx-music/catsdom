@@ -4,17 +4,21 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=28";
+} from "./game-engine.js?v=29";
 import {
-  CAT_CONTENT,
   discoverActiveCat,
   getActiveCat,
   getCatCollection,
   loadCatProgress,
   revealCatTiles,
   saveCatProgress,
-} from "./cat-progress.js?v=28";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=28";
+} from "./cat-progress.js?v=29";
+import {
+  BUNDLED_CATALOG,
+  CatCatalogRepository,
+} from "./cat-catalog-repository.js?v=29";
+import { CatAssetStore } from "./cat-asset-store.js?v=29";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=29";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -63,11 +67,21 @@ const elements = {
   revealCount: document.querySelector("#reveal-count"),
   activeCatLabel: document.querySelector("#active-cat-label"),
   startProgress: document.querySelector("#start-progress"),
+  contentStatus: document.querySelector("#content-status"),
   collectionProgress: document.querySelector("#collection-progress"),
   catGrid: document.querySelector("#cat-grid"),
 };
 
 const engine = new GameEngine();
+const catalogRepository = new CatCatalogRepository({
+  bundledCatalog: BUNDLED_CATALOG,
+  catalogUrl:
+    document.querySelector('meta[name="catsdom-catalog-url"]')?.content ?? "./cats/catalog.json",
+});
+const catAssetStore = new CatAssetStore();
+let catCatalog = catalogRepository.loadCatalog().cats;
+let pendingCatCatalog = null;
+const catRuntimeImageUrls = new Map();
 let state = engine.newGame();
 let selected = null;
 let busy = false;
@@ -79,10 +93,11 @@ let deferredInstallPrompt = null;
 let revealedObjectPieces = new Set();
 let newlyRevealedObjectPieces = new Set();
 let objectCollected = false;
-let catProgress = loadCatProgress();
-let activeCat = getActiveCat(catProgress);
+let catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
+let activeCat = getActiveCat(catProgress, catCatalog);
 let collectionReturnScreen = "start";
 let nextCatAfterCompletion = null;
+let contentReady = null;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -701,6 +716,74 @@ function pulseScore() {
   );
 }
 
+function catAssetKey(cat) {
+  return `${cat.id}@${cat.version}`;
+}
+
+function catImageSource(cat, { thumbnail = false } = {}) {
+  if (!cat) return "";
+  const runtimeUrl = catRuntimeImageUrls.get(catAssetKey(cat));
+  if (runtimeUrl) return runtimeUrl;
+  if (!cat.isDownloadable) return cat.imageUrl;
+  return thumbnail ? cat.thumbnailUrl : "";
+}
+
+function setContentStatus(text = "") {
+  elements.contentStatus.textContent = text;
+  elements.contentStatus.hidden = text.length === 0;
+}
+
+function applyPendingCatCatalog() {
+  if (!pendingCatCatalog) return false;
+  catCatalog = pendingCatCatalog;
+  pendingCatCatalog = null;
+  catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
+  activeCat = getActiveCat(catProgress, catCatalog);
+  updateCollectionProgress();
+  return true;
+}
+
+async function syncCatContent({ force = false } = {}) {
+  const result = await catalogRepository.sync({ force });
+  if (!elements.gameScreen.hidden) {
+    pendingCatCatalog = result.catalog.cats;
+    return result;
+  }
+  catCatalog = result.catalog.cats;
+  catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
+  activeCat = getActiveCat(catProgress, catCatalog);
+  updateCollectionProgress();
+  if (result.newCatIds.length > 0) {
+    setContentStatus(
+      result.newCatIds.length === 1
+        ? "Eine neue Katze ist verfügbar 🐾"
+        : `${result.newCatIds.length} neue Katzen sind verfügbar 🐾`,
+    );
+  }
+  if (!elements.collectionScreen.hidden) renderCollection();
+  return result;
+}
+
+async function prepareCatForPlay(cat) {
+  if (!cat?.isDownloadable) return true;
+  const existingUrl = catRuntimeImageUrls.get(catAssetKey(cat));
+  if (existingUrl) return true;
+
+  elements.startButton.disabled = true;
+  elements.playAgainButton.disabled = true;
+  setContentStatus(`${cat.name} wird für das Offline-Spielen geladen …`);
+  const download = await catAssetStore.ensureDownloaded(cat);
+  elements.startButton.disabled = false;
+  elements.playAgainButton.disabled = false;
+  if (download.status !== "downloaded" || !download.url) {
+    setContentStatus(`${cat.name} konnte nicht geladen werden. Bitte Internetverbindung prüfen.`);
+    return false;
+  }
+  catRuntimeImageUrls.set(catAssetKey(cat), download.url);
+  setContentStatus(`${cat.name} ist geladen und bleibt offline verfügbar.`);
+  return true;
+}
+
 function showStart() {
   flowGeneration += 1;
   interactionWindow = null;
@@ -711,15 +794,20 @@ function showStart() {
   elements.gameScreen.hidden = true;
   elements.collectionScreen.hidden = true;
   elements.catGrid.replaceChildren();
+  applyPendingCatCatalog();
   updateCollectionProgress();
 }
 
-function showGame() {
-  catProgress = loadCatProgress();
-  if (!getActiveCat(catProgress)) {
+async function showGame() {
+  if (contentReady) await contentReady;
+  applyPendingCatCatalog();
+  catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
+  activeCat = getActiveCat(catProgress, catCatalog);
+  if (!activeCat) {
     showCollection("start");
     return;
   }
+  if (!(await prepareCatForPlay(activeCat))) return;
   elements.startScreen.hidden = true;
   elements.gameScreen.hidden = false;
   elements.collectionScreen.hidden = true;
@@ -729,8 +817,9 @@ function showGame() {
 
 function showCollection(returnScreen = "start") {
   if (elements.dialog.open) elements.dialog.close();
+  applyPendingCatCatalog();
   collectionReturnScreen = returnScreen;
-  catProgress = loadCatProgress();
+  catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
   elements.startScreen.hidden = true;
   elements.gameScreen.hidden = true;
   elements.collectionScreen.hidden = false;
@@ -749,15 +838,16 @@ function closeCollection() {
 }
 
 function updateCollectionProgress() {
-  const discoveredCount = catProgress.discoveredCatIds.length;
-  const progressText = `${discoveredCount} von ${CAT_CONTENT.length} Katzen entdeckt`;
+  const catalogIds = new Set(catCatalog.map((cat) => cat.id));
+  const discoveredCount = catProgress.discoveredCatIds.filter((id) => catalogIds.has(id)).length;
+  const progressText = `${discoveredCount} von ${catCatalog.length} Katzen entdeckt`;
   elements.startProgress.textContent = progressText;
   elements.collectionProgress.textContent = progressText;
-  elements.startButton.textContent = discoveredCount === CAT_CONTENT.length ? "Meine Katzen" : "Losspielen";
+  elements.startButton.textContent = discoveredCount === catCatalog.length ? "Meine Katzen" : "Losspielen";
 }
 
 function renderCollection() {
-  const cats = getCatCollection(catProgress);
+  const cats = getCatCollection(catProgress, catCatalog);
   updateCollectionProgress();
   elements.catGrid.replaceChildren();
 
@@ -774,12 +864,21 @@ function renderCollection() {
     const portrait = document.createElement("div");
     portrait.className = "cat-portrait";
     if (cat.isDiscovered) {
-      const image = document.createElement("img");
-      image.src = cat.imageAsset;
-      image.alt = cat.name;
-      image.loading = "lazy";
-      image.decoding = "async";
-      portrait.append(image);
+      const imageSource = catImageSource(cat, { thumbnail: true });
+      if (imageSource) {
+        const image = document.createElement("img");
+        image.src = imageSource;
+        image.alt = cat.name;
+        image.loading = "lazy";
+        image.decoding = "async";
+        portrait.append(image);
+      } else {
+        const offlineCover = document.createElement("span");
+        offlineCover.className = "cat-card-cover";
+        offlineCover.textContent = "☁️";
+        offlineCover.setAttribute("aria-label", "Bild muss erneut geladen werden");
+        portrait.append(offlineCover);
+      }
 
       const check = document.createElement("span");
       check.className = "cat-check";
@@ -800,7 +899,10 @@ function renderCollection() {
 
     if (cat.isActive) {
       const status = document.createElement("p");
-      status.textContent = `${cat.revealProgress}/64 freigelegt`;
+      status.textContent =
+        cat.isDownloadable && catAssetStore.getDownloadState(cat) !== "downloaded"
+          ? "Download beim Start"
+          : `${cat.revealProgress}/64 freigelegt`;
       card.append(status);
     }
 
@@ -812,8 +914,8 @@ function restartGame() {
   flowGeneration += 1;
   interactionWindow = null;
   dragGesture = null;
-  catProgress = loadCatProgress();
-  activeCat = getActiveCat(catProgress);
+  catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
+  activeCat = getActiveCat(catProgress, catCatalog);
   if (!activeCat) {
     showCollection("start");
     return;
@@ -853,7 +955,7 @@ function render() {
     objectLayer.style.gridRow = `${OBJECT_TOP + 1} / span ${OBJECT_SIZE}`;
     objectLayer.style.gridColumn = `${OBJECT_LEFT + 1} / span ${OBJECT_SIZE}`;
     const photo = document.createElement("img");
-    photo.src = activeCat?.imageAsset ?? "";
+    photo.src = catImageSource(activeCat);
     photo.alt = "";
     photo.decoding = "async";
     photo.fetchPriority = "high";
@@ -946,7 +1048,7 @@ function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
     }
   }
   if (newlyRevealed.length > 0 && activeCat) {
-    catProgress = revealCatTiles(catProgress, activeCat.id, newlyRevealed);
+    catProgress = revealCatTiles(catProgress, activeCat.id, newlyRevealed, catCatalog);
     saveCatProgress(catProgress);
   }
   renderObjectProgress();
@@ -962,7 +1064,7 @@ function showGameOver(completedCat, nextCat) {
 
 async function completeCatReveal() {
   const completedCat = activeCat;
-  const completion = discoverActiveCat(catProgress);
+  const completion = discoverActiveCat(catProgress, catCatalog);
   catProgress = completion.progress;
   nextCatAfterCompletion = completion.nextCat;
   saveCatProgress(catProgress);
@@ -1276,15 +1378,19 @@ elements.board.addEventListener("pointercancel", async () => {
 });
 
 elements.startButton.addEventListener("click", showGame);
-elements.startCollectionButton.addEventListener("click", () => showCollection("start"));
+elements.startCollectionButton.addEventListener("click", async () => {
+  if (contentReady) await contentReady;
+  showCollection("start");
+});
 elements.gameCollectionButton.addEventListener("click", () => {
   if (!busy) showCollection("game");
 });
 elements.collectionBackButton.addEventListener("click", closeCollection);
 elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
-elements.playAgainButton.addEventListener("click", () => {
-  if (getActiveCat(loadCatProgress())) restartGame();
+elements.playAgainButton.addEventListener("click", async () => {
+  const progress = loadCatProgress(globalThis.localStorage, catCatalog);
+  if (getActiveCat(progress, catCatalog)) await showGame();
   else showCollection("start");
 });
 elements.dialogHomeButton.addEventListener("click", showStart);
@@ -1328,6 +1434,14 @@ window.addEventListener("appinstalled", () => {
   elements.pwaNote.textContent = "Catsdom wurde installiert und kann vom Homescreen gestartet werden.";
 });
 
+window.addEventListener("online", () => {
+  contentReady = syncCatContent();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") contentReady = syncCatContent();
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./service-worker.js", { scope: "./" }).catch(() => {
@@ -1338,3 +1452,4 @@ if ("serviceWorker" in navigator) {
 
 updateCollectionProgress();
 render();
+contentReady = syncCatContent();

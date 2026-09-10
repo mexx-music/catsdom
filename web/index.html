@@ -7,15 +7,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Catsdom" />
+    <meta name="catsdom-catalog-url" content="./cats/catalog.json" />
     <meta
       name="description"
       content="Catsdom Pfoten-Puzzle – ein eigenständiger Katzen-Puzzle-Prototyp."
     />
     <title>Catsdom – Pfoten-Puzzle</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=28" />
+    <link rel="manifest" href="./manifest.webmanifest?v=29" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css?v=28" />
+    <link rel="stylesheet" href="./styles.css?v=29" />
   </head>
   <body>
     <main class="app-shell">
@@ -40,6 +41,7 @@
           Als App installieren
         </button>
         <p id="pwa-note" class="pwa-note" hidden></p>
+        <p id="content-status" class="content-status" role="status" hidden></p>
         <p id="start-progress" class="game-facts">0 von 9 Katzen entdeckt</p>
       </section>
 
@@ -117,6 +119,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=28"></script>
+    <script type="module" src="./src/app.js?v=29"></script>
   </body>
 </html>
