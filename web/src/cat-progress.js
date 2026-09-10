@@ -1,4 +1,4 @@
-import { BUNDLED_CATS } from "./cat-content.js";
+import { BUNDLED_CATS } from "./cat-content.js?v=32";
 
 export const REVEAL_TILE_COUNT = 64;
 export const CAT_PROGRESS_STORAGE_KEY = "catsdom.catCollection.v1";

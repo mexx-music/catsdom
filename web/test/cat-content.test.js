@@ -53,6 +53,33 @@ test("duplicate remote IDs keep only the newest valid asset version", () => {
   assert.equal(catalog.cats[0].version, 2);
 });
 
+test("daily set metadata is normalized while malformed set definitions are rejected", () => {
+  const catalog = validateRemoteCatalog(
+    {
+      catalogVersion: 5,
+      collections: [
+        {
+          id: "daily_2026_09_11",
+          name: "Freitag, 11. September",
+          version: 1,
+          kind: "daily",
+          releaseDate: "2026-09-10T23:00:00Z",
+          timeZone: "Europe/Vienna",
+          expectedCatCount: 9,
+        },
+        { id: "broken_daily", name: "Kaputt", kind: "daily", expectedCatCount: 8 },
+      ],
+      cats: [],
+    },
+    { baseUrl: "https://cdn.example/cats/catalog.json" },
+  );
+
+  assert.equal(catalog.collections.length, 1);
+  assert.equal(catalog.collections[0].kind, "daily");
+  assert.equal(catalog.collections[0].releaseDate, "2026-09-10T23:00:00.000Z");
+  assert.equal(catalog.collections[0].expectedCatCount, 9);
+});
+
 test("release dates hide future cats while released cats extend bundled content", () => {
   const remote = validateRemoteCatalog(
     {

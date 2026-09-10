@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=31";
+} from "./game-engine.js?v=32";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,13 +13,13 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=31";
+} from "./cat-progress.js?v=32";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=31";
-import { CatAssetStore } from "./cat-asset-store.js?v=31";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=31";
+} from "./cat-catalog-repository.js?v=32";
+import { CatAssetStore } from "./cat-asset-store.js?v=32";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=32";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },

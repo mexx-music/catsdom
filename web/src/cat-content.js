@@ -13,6 +13,8 @@ export const SUPPORTED_CAT_IMAGE_TYPES = Object.freeze([
 ]);
 
 export const MAX_CAT_DOWNLOAD_BYTES = 15 * 1024 * 1024;
+export const COLLECTION_KINDS = Object.freeze(["standard", "daily", "bonus"]);
+export const DAILY_SET_SIZE = 9;
 
 const STARTER_RELEASE_DATE = "2026-09-03T00:00:00.000Z";
 const starterNames = ["Luna", "Milo", "Nala", "Leo", "Coco", "Mia", "Loki", "Bella", "Suki"];
@@ -20,7 +22,7 @@ const starterNames = ["Luna", "Milo", "Nala", "Leo", "Coco", "Mia", "Loki", "Bel
 export const BUNDLED_CATALOG = Object.freeze({
   catalogVersion: 1,
   collections: Object.freeze([
-    Object.freeze({ id: "starter", name: "Starter Cats", version: 1 }),
+    Object.freeze({ id: "starter", name: "Starter Cats", version: 1, kind: "standard" }),
   ]),
   cats: Object.freeze(
     starterNames.map((name, index) => {
@@ -171,7 +173,22 @@ export function validateRemoteCatalog(
           const id = optionalText(collection?.id, 64);
           const name = optionalText(collection?.name, 100);
           if (!id || !CAT_ID_PATTERN.test(id) || !name) return null;
-          return Object.freeze({ id, name, version: Math.max(1, Number(collection.version) || 1) });
+          const kind = optionalText(collection?.kind ?? "standard", 20);
+          if (!COLLECTION_KINDS.includes(kind)) return null;
+          const normalized = {
+            id,
+            name,
+            version: Math.max(1, Number(collection.version) || 1),
+            kind,
+          };
+          if (kind === "daily") {
+            const releaseDate = normalizeReleaseDate(collection.releaseDate);
+            const timeZone = optionalText(collection.timeZone, 64);
+            const expectedCatCount = Number(collection.expectedCatCount);
+            if (!releaseDate || !timeZone || expectedCatCount !== DAILY_SET_SIZE) return null;
+            Object.assign(normalized, { releaseDate, timeZone, expectedCatCount });
+          }
+          return Object.freeze(normalized);
         })
         .filter(Boolean)
     : [];
