@@ -12,10 +12,10 @@
       content="Catsdom Pfoten-Puzzle – ein eigenständiger Katzen-Puzzle-Prototyp."
     />
     <title>Catsdom – Pfoten-Puzzle</title>
-    <link rel="manifest" href="./manifest.webmanifest?v=22" />
+    <link rel="manifest" href="./manifest.webmanifest?v=24" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css?v=22" />
+    <link rel="stylesheet" href="./styles.css?v=24" />
   </head>
   <body>
     <main class="app-shell">
@@ -33,11 +33,14 @@
           Ziehe süße Katzensachen auf ein Nachbarfeld und bilde Reihen aus drei oder mehr Teilen.
         </p>
         <button id="start-button" class="primary-button" type="button">Losspielen</button>
+        <button id="start-collection-button" class="collection-button" type="button">
+          Meine Katzen
+        </button>
         <button id="install-button" class="install-button" type="button" hidden>
           Als App installieren
         </button>
         <p id="pwa-note" class="pwa-note" hidden></p>
-        <p class="game-facts">64 Bildfelder · 6 Symboltypen · kein Zuglimit</p>
+        <p id="start-progress" class="game-facts">0 von 9 Katzen entdeckt</p>
       </section>
 
       <section id="game-screen" class="screen game-screen" aria-labelledby="game-title" hidden>
@@ -47,7 +50,10 @@
             <h1 id="game-title">Pfoten-Puzzle</h1>
             <p>Bilde Reihen aus 3+</p>
           </div>
-          <button id="restart-button" class="text-button" type="button">Neu</button>
+          <div class="header-actions">
+            <button id="game-collection-button" class="text-button" type="button">Katzen</button>
+            <button id="restart-button" class="text-button" type="button">Neu</button>
+          </div>
         </header>
 
         <div class="stats" aria-label="Spielstand">
@@ -60,7 +66,7 @@
             <strong id="moves">0</strong>
           </div>
           <div class="stat-card">
-            <span>Milo</span>
+            <span id="active-cat-label">Luna</span>
             <strong id="reveal-count">0/64</strong>
           </div>
         </div>
@@ -77,22 +83,40 @@
           Tippe zwei Felder an oder ziehe ein Teil auf seinen Nachbarn
         </p>
       </section>
+
+      <section
+        id="collection-screen"
+        class="screen collection-screen"
+        aria-labelledby="collection-title"
+        hidden
+      >
+        <header class="collection-header">
+          <button id="collection-back-button" class="text-button" type="button">‹ Zurück</button>
+          <div>
+            <p class="collection-kicker">CATSDOM</p>
+            <h1 id="collection-title">Meine Katzen</h1>
+            <p id="collection-progress">0 von 9 entdeckt</p>
+          </div>
+          <span aria-hidden="true"></span>
+        </header>
+        <div id="cat-grid" class="cat-grid" aria-label="Katzensammlung"></div>
+      </section>
     </main>
 
     <dialog id="game-over-dialog" class="game-dialog">
-      <h2>Milo ist frei! 🐾</h2>
-      <p>
+      <h2 id="completion-title">Katze entdeckt! 🐾</h2>
+      <p id="completion-copy">
         Du hast das Bild in <strong id="final-moves">0</strong> Zügen freigelegt und
         <strong id="final-score">0</strong> Punkte gesammelt.
       </p>
       <div class="dialog-actions">
         <button id="dialog-home-button" class="text-button" type="button">Zum Start</button>
         <button id="play-again-button" class="primary-button compact" type="button">
-          Noch einmal
+          Nächste Katze
         </button>
       </div>
     </dialog>
 
-    <script type="module" src="./src/app.js?v=22"></script>
+    <script type="module" src="./src/app.js?v=24"></script>
   </body>
 </html>

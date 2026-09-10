@@ -4,7 +4,16 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=22";
+} from "./game-engine.js?v=24";
+import {
+  CAT_CONTENT,
+  discoverActiveCat,
+  getActiveCat,
+  getCatCollection,
+  loadCatProgress,
+  revealCatTiles,
+  saveCatProgress,
+} from "./cat-progress.js?v=24";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -30,7 +39,11 @@ const OBJECT_CELLS = Array.from({ length: OBJECT_SIZE ** 2 }, (_, index) => ({
 const elements = {
   startScreen: document.querySelector("#start-screen"),
   gameScreen: document.querySelector("#game-screen"),
+  collectionScreen: document.querySelector("#collection-screen"),
   startButton: document.querySelector("#start-button"),
+  startCollectionButton: document.querySelector("#start-collection-button"),
+  gameCollectionButton: document.querySelector("#game-collection-button"),
+  collectionBackButton: document.querySelector("#collection-back-button"),
   backButton: document.querySelector("#back-button"),
   restartButton: document.querySelector("#restart-button"),
   board: document.querySelector("#board"),
@@ -40,11 +53,17 @@ const elements = {
   dialog: document.querySelector("#game-over-dialog"),
   finalScore: document.querySelector("#final-score"),
   finalMoves: document.querySelector("#final-moves"),
+  completionTitle: document.querySelector("#completion-title"),
+  completionCopy: document.querySelector("#completion-copy"),
   playAgainButton: document.querySelector("#play-again-button"),
   dialogHomeButton: document.querySelector("#dialog-home-button"),
   installButton: document.querySelector("#install-button"),
   pwaNote: document.querySelector("#pwa-note"),
   revealCount: document.querySelector("#reveal-count"),
+  activeCatLabel: document.querySelector("#active-cat-label"),
+  startProgress: document.querySelector("#start-progress"),
+  collectionProgress: document.querySelector("#collection-progress"),
+  catGrid: document.querySelector("#cat-grid"),
 };
 
 const engine = new GameEngine();
@@ -57,6 +76,10 @@ let deferredInstallPrompt = null;
 let revealedObjectPieces = new Set();
 let newlyRevealedObjectPieces = new Set();
 let objectCollected = false;
+let catProgress = loadCatProgress();
+let activeCat = getActiveCat(catProgress);
+let collectionReturnScreen = "start";
+let nextCatAfterCompletion = null;
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
@@ -533,24 +556,122 @@ function showStart() {
   elements.dialog.close?.();
   elements.startScreen.hidden = false;
   elements.gameScreen.hidden = true;
+  elements.collectionScreen.hidden = true;
+  elements.catGrid.replaceChildren();
+  updateCollectionProgress();
 }
 
 function showGame() {
+  catProgress = loadCatProgress();
+  if (!getActiveCat(catProgress)) {
+    showCollection("start");
+    return;
+  }
   elements.startScreen.hidden = true;
   elements.gameScreen.hidden = false;
+  elements.collectionScreen.hidden = true;
+  elements.catGrid.replaceChildren();
   restartGame();
 }
 
+function showCollection(returnScreen = "start") {
+  if (elements.dialog.open) elements.dialog.close();
+  collectionReturnScreen = returnScreen;
+  catProgress = loadCatProgress();
+  elements.startScreen.hidden = true;
+  elements.gameScreen.hidden = true;
+  elements.collectionScreen.hidden = false;
+  renderCollection();
+}
+
+function closeCollection() {
+  elements.catGrid.replaceChildren();
+  if (collectionReturnScreen === "game" && activeCat) {
+    elements.startScreen.hidden = true;
+    elements.collectionScreen.hidden = true;
+    elements.gameScreen.hidden = false;
+    return;
+  }
+  showStart();
+}
+
+function updateCollectionProgress() {
+  const discoveredCount = catProgress.discoveredCatIds.length;
+  const progressText = `${discoveredCount} von ${CAT_CONTENT.length} Katzen entdeckt`;
+  elements.startProgress.textContent = progressText;
+  elements.collectionProgress.textContent = progressText;
+  elements.startButton.textContent = discoveredCount === CAT_CONTENT.length ? "Meine Katzen" : "Losspielen";
+}
+
+function renderCollection() {
+  const cats = getCatCollection(catProgress);
+  updateCollectionProgress();
+  elements.catGrid.replaceChildren();
+
+  for (const cat of cats) {
+    const card = document.createElement("article");
+    card.className = `cat-card${cat.isDiscovered ? " discovered" : " covered"}${
+      cat.isActive ? " active" : ""
+    }`;
+    card.setAttribute(
+      "aria-label",
+      cat.isDiscovered ? `${cat.name}, entdeckt` : cat.isActive ? `${cat.name}, wird entdeckt` : `${cat.name}, noch verborgen`,
+    );
+
+    const portrait = document.createElement("div");
+    portrait.className = "cat-portrait";
+    if (cat.isDiscovered) {
+      const image = document.createElement("img");
+      image.src = cat.imageAsset;
+      image.alt = cat.name;
+      image.loading = "lazy";
+      image.decoding = "async";
+      portrait.append(image);
+
+      const check = document.createElement("span");
+      check.className = "cat-check";
+      check.textContent = "✓";
+      check.setAttribute("aria-hidden", "true");
+      portrait.append(check);
+    } else {
+      const cover = document.createElement("span");
+      cover.className = "cat-card-cover";
+      cover.textContent = cat.isActive ? "🐾" : "🔒";
+      cover.setAttribute("aria-hidden", "true");
+      portrait.append(cover);
+    }
+
+    const name = document.createElement("h2");
+    name.textContent = cat.name;
+    card.append(portrait, name);
+
+    if (cat.isActive) {
+      const status = document.createElement("p");
+      status.textContent = `${cat.revealProgress}/64 freigelegt`;
+      card.append(status);
+    }
+
+    elements.catGrid.append(card);
+  }
+}
+
 function restartGame() {
+  catProgress = loadCatProgress();
+  activeCat = getActiveCat(catProgress);
+  if (!activeCat) {
+    showCollection("start");
+    return;
+  }
   state = engine.newGame();
   selected = null;
   busy = false;
-  revealedObjectPieces = new Set();
+  revealedObjectPieces = new Set(catProgress.revealByCat[activeCat.id] ?? []);
   newlyRevealedObjectPieces = new Set();
   objectCollected = false;
+  nextCatAfterCompletion = null;
   if (elements.dialog.open) elements.dialog.close();
   clearDragHighlights();
-  setMessage("Lege Milos Bild Feld für Feld frei");
+  setMessage(`Lege ${activeCat.name} Feld für Feld frei`);
   renderObjectProgress();
   render();
 }
@@ -562,6 +683,7 @@ function setMessage(text) {
 function render() {
   elements.score.textContent = state.score.toLocaleString("de-DE");
   elements.moves.textContent = state.moves;
+  elements.activeCatLabel.textContent = activeCat?.name ?? "Katzen";
   elements.board.setAttribute("aria-busy", String(busy));
   elements.board.classList.toggle("reveal-complete", objectCollected);
   elements.board.replaceChildren();
@@ -575,8 +697,10 @@ function render() {
     objectLayer.style.gridRow = `${OBJECT_TOP + 1} / span ${OBJECT_SIZE}`;
     objectLayer.style.gridColumn = `${OBJECT_LEFT + 1} / span ${OBJECT_SIZE}`;
     const photo = document.createElement("img");
-    photo.src = "./assets/milo-window-seat.webp";
+    photo.src = activeCat?.imageAsset ?? "";
     photo.alt = "";
+    photo.decoding = "async";
+    photo.fetchPriority = "high";
     objectLayer.append(photo);
     const cover = document.createElement("div");
     cover.className = "board-object-cover";
@@ -651,6 +775,7 @@ function renderObjectProgress() {
 }
 
 function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
+  const newlyRevealed = [];
   for (let pieceIndex = 0; pieceIndex < OBJECT_CELLS.length; pieceIndex += 1) {
     const { row, column } = OBJECT_CELLS[pieceIndex];
     if (
@@ -661,28 +786,41 @@ function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
     ) {
       revealedObjectPieces.add(pieceIndex);
       newlyRevealedObjectPieces.add(pieceIndex);
+      newlyRevealed.push(pieceIndex);
     }
+  }
+  if (newlyRevealed.length > 0 && activeCat) {
+    catProgress = revealCatTiles(catProgress, activeCat.id, newlyRevealed);
+    saveCatProgress(catProgress);
   }
   renderObjectProgress();
 }
 
-function showGameOver() {
+function showGameOver(completedCat, nextCat) {
   elements.finalScore.textContent = state.score.toLocaleString("de-DE");
   elements.finalMoves.textContent = state.moves.toLocaleString("de-DE");
+  elements.completionTitle.textContent = `${completedCat.name} entdeckt! 🐾`;
+  elements.playAgainButton.textContent = nextCat ? "Nächste Katze" : "Meine Katzen";
   elements.dialog.showModal();
 }
 
 async function completeCatReveal() {
+  const completedCat = activeCat;
+  const completion = discoverActiveCat(catProgress);
+  catProgress = completion.progress;
+  nextCatAfterCompletion = completion.nextCat;
+  saveCatProgress(catProgress);
+  updateCollectionProgress();
   objectCollected = true;
   renderObjectProgress();
   elements.board.classList.add("reveal-complete");
   elements.board.querySelectorAll(".tile").forEach((tile) => {
     tile.disabled = true;
   });
-  setMessage(`Milo ist frei – geschafft in ${state.moves} Zügen! 🐾`);
+  setMessage(`${completedCat.name} ist frei – geschafft in ${state.moves} Zügen! 🐾`);
 
   if (reducedMotion) {
-    showGameOver();
+    showGameOver(completedCat, nextCatAfterCompletion);
     return;
   }
 
@@ -697,7 +835,7 @@ async function completeCatReveal() {
     ),
   );
   await sleep(900);
-  showGameOver();
+  showGameOver(completedCat, nextCatAfterCompletion);
 }
 
 async function handleTileTap(position) {
@@ -929,9 +1067,17 @@ elements.board.addEventListener("pointercancel", async () => {
 });
 
 elements.startButton.addEventListener("click", showGame);
+elements.startCollectionButton.addEventListener("click", () => showCollection("start"));
+elements.gameCollectionButton.addEventListener("click", () => {
+  if (!busy) showCollection("game");
+});
+elements.collectionBackButton.addEventListener("click", closeCollection);
 elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
-elements.playAgainButton.addEventListener("click", restartGame);
+elements.playAgainButton.addEventListener("click", () => {
+  if (getActiveCat(loadCatProgress())) restartGame();
+  else showCollection("start");
+});
 elements.dialogHomeButton.addEventListener("click", showStart);
 
 const isAppleTouchDevice =
@@ -981,4 +1127,5 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+updateCollectionProgress();
 render();
