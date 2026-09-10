@@ -1,13 +1,13 @@
-const CACHE_NAME = "catsdom-pwa-v23";
+const CACHE_NAME = "catsdom-pwa-v24";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=26",
-  "./src/app.js?v=26",
-  "./src/game-engine.js?v=26",
-  "./src/cat-progress.js?v=26",
-  "./src/motion-tuning.js?v=26",
-  "./manifest.webmanifest?v=26",
+  "./styles.css?v=27",
+  "./src/app.js?v=27",
+  "./src/game-engine.js?v=27",
+  "./src/cat-progress.js?v=27",
+  "./src/motion-tuning.js?v=27",
+  "./manifest.webmanifest?v=27",
   "./assets/cats/cat_01.webp",
   "./assets/cats/cat_02.webp",
   "./assets/cats/cat_03.webp",

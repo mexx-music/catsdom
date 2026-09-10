@@ -888,21 +888,22 @@ button:focus-visible {
 
   .game-screen {
     display: grid;
-    grid-template-columns: minmax(280px, 360px) min(72vh, 720px, calc(100vw - 430px));
+    grid-template-columns: clamp(120px, 14vw, 160px) min(82vh, 820px, calc(100vw - 250px));
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
-      "header board"
+      ". header"
       "stats board"
       "message board";
     align-content: center;
     justify-content: center;
-    column-gap: clamp(28px, 4.5vw, 64px);
-    row-gap: 22px;
+    column-gap: clamp(16px, 2.4vw, 30px);
+    row-gap: 10px;
   }
 
   .game-header {
     grid-area: header;
     align-self: end;
+    grid-template-columns: auto 1fr auto;
     margin: 0;
   }
 
@@ -912,12 +913,13 @@ button:focus-visible {
 
   .stats {
     grid-area: stats;
-    align-self: center;
+    align-self: start;
+    grid-template-columns: 1fr;
     margin: 0;
   }
 
   .stat-card {
-    min-height: 92px;
+    min-height: 78px;
     justify-content: center;
   }
 
@@ -933,8 +935,8 @@ button:focus-visible {
   .message {
     grid-area: message;
     align-self: start;
-    margin: 0 12px;
-    font-size: 1rem;
+    margin: 0 4px;
+    font-size: 0.88rem;
   }
 
   .collection-screen {
