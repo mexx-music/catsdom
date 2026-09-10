@@ -66,6 +66,20 @@ test("invalid swaps leave the state untouched", () => {
   assert.deepEqual(result.frames.at(-1), state);
 });
 
+test("an unrelated swap is rejected while an automatic cascade match is present", () => {
+  const engine = new GameEngine(seededRandom());
+  const board = cleanPattern();
+  board[0][0] = "cat";
+  board[0][1] = "cat";
+  board[0][2] = "cat";
+  const state = { board, score: 120, moves: 3 };
+
+  const result = engine.trySwap(state, { row: 7, column: 6 }, { row: 7, column: 7 });
+
+  assert.equal(result.accepted, false);
+  assert.deepEqual(result.frames.at(-1), state);
+});
+
 test("cross-shaped matches count their shared tile once", () => {
   const engine = new GameEngine(seededRandom());
   const board = cleanPattern();

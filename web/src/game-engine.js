@@ -47,8 +47,11 @@ export class GameEngine {
       return this.activatePawBombSwap(state, board, first, second, firstTile, secondTile);
     }
 
-    let matches = this.findMatches(board);
-    if (matches.size === 0) {
+    const swapKeys = new Set([positionKey(first), positionKey(second)]);
+    const createsMatchThroughSwap = this.findMatchGroups(board).some((group) =>
+      group.some((position) => swapKeys.has(positionKey(position))),
+    );
+    if (!createsMatchThroughSwap) {
       return { accepted: false, frames: [state], removedTiles: 0, reshuffled: false };
     }
 

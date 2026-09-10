@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=25";
+} from "./game-engine.js?v=26";
 import {
   CAT_CONTENT,
   discoverActiveCat,
@@ -13,8 +13,8 @@ import {
   loadCatProgress,
   revealCatTiles,
   saveCatProgress,
-} from "./cat-progress.js?v=25";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=25";
+} from "./cat-progress.js?v=26";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=26";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -71,6 +71,8 @@ const engine = new GameEngine();
 let state = engine.newGame();
 let selected = null;
 let busy = false;
+let flowGeneration = 0;
+let interactionWindow = null;
 let dragGesture = null;
 let suppressNextClick = false;
 let deferredInstallPrompt = null;
@@ -85,6 +87,25 @@ let nextCatAfterCompletion = null;
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function canInteractAt(position) {
+  if (objectCollected) return false;
+  if (!busy) return true;
+  return (
+    interactionWindow?.type === "fall" &&
+    interactionWindow.flowId === flowGeneration &&
+    !interactionWindow.lockedColumns.has(position.column)
+  );
+}
+
+function closeFallInteractionWindow(flowId) {
+  if (interactionWindow?.flowId !== flowId) return;
+  interactionWindow = null;
+  selected = null;
+  const gesture = dragGesture;
+  dragGesture = null;
+  if (gesture) resetDragStyles(gesture);
+}
 
 function tileElement(position) {
   return elements.board.querySelector(
@@ -167,6 +188,35 @@ async function animateSwap(first, second, returnToOrigin = false) {
     waitForAnimation(firstVisual.animate(firstFrames, timing)),
     waitForAnimation(secondVisual.animate(secondFrames, timing)),
   ]);
+}
+
+function animateSwapLanding(positions) {
+  if (reducedMotion) return;
+  for (const position of positions) {
+    const tile = tileElement(position);
+    if (!tile) continue;
+    tile.animate(
+      [
+        { transform: `scale(${MOTION_TUNING.movingPieceScale})` },
+        { transform: `scale(${MOTION_TUNING.landingScale})`, offset: 0.58 },
+        { transform: "scale(1)" },
+      ],
+      { duration: 90, easing: MOTION_TUNING.landingEasing },
+    );
+  }
+}
+
+function directDragResolutionDelay(gesture) {
+  if (reducedMotion || gesture.progress >= MOTION_TUNING.swapResolutionProgress) return 0;
+  const remainingProgress = Math.max(0.001, 1 - gesture.progress);
+  const releaseDuration = Math.max(
+    MOTION_TUNING.directDragMinDuration,
+    MOTION_TUNING.directDragBaseDuration * remainingProgress,
+  );
+  return (
+    releaseDuration *
+    ((MOTION_TUNING.swapResolutionProgress - gesture.progress) / remainingProgress)
+  );
 }
 
 function resetDragStyles(gesture) {
@@ -404,7 +454,7 @@ async function animateClears(beforeBoard, clearedBoard, particleCount = 8) {
   await Promise.all([...animations, waitForAnimation(boardBounce)]);
 }
 
-async function animatePawBombBlast(blastCenters, isCombo) {
+function animatePawBombBlast(blastCenters, isCombo) {
   const points = blastCenters
     .map((position) => ({ position, tile: tileElement(position) }))
     .filter(({ tile }) => Boolean(tile))
@@ -419,39 +469,36 @@ async function animatePawBombBlast(blastCenters, isCombo) {
         power: position.power ?? 1,
       };
     });
-  if (points.length === 0) return;
+  if (points.length === 0) return Promise.resolve();
 
   const hasBigBomb = points.some((point) => point.power >= 2);
   setMessage(
     isCombo
-      ? "Doppel-Pfoten-Krawall lädt …"
+      ? "Doppel-Pfoten-Krawall!"
       : hasBigBomb
-        ? "Riesen-Pfotenbombe lädt …"
-        : "Pfotenbombe lädt …",
+        ? "Riesen-Pfotenbombe!"
+        : "Pfotenbombe!",
   );
-  if (reducedMotion) {
-    await sleep(180);
-    return;
-  }
+  if (reducedMotion) return Promise.resolve();
 
-  const chargeDuration = isCombo ? 720 : hasBigBomb ? 650 : 540;
-  await Promise.all(
-    points.map(({ visual }, index) =>
-      waitForAnimation(
-        visual.animate(
-          [
-            { transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
-            {
-              transform: `scale(${isCombo ? 1.42 : hasBigBomb ? 1.36 : 1.28}) rotate(${index % 2 ? 10 : -10}deg)`,
-              filter: "brightness(1.65)",
-              offset: 0.72,
-            },
-            { transform: "scale(1.12) rotate(0deg)", filter: "brightness(1.3)" },
-          ],
-          { duration: chargeDuration, easing: "cubic-bezier(.2,.72,.25,1)" },
-        ),
+  const chargeAnimations = points.map(({ visual }, index) =>
+    waitForAnimation(
+      visual.animate(
+        [
+          { transform: "scale(1) rotate(0deg)", filter: "brightness(1)" },
+          {
+            transform: `scale(${isCombo ? 1.42 : hasBigBomb ? 1.36 : 1.28}) rotate(${index % 2 ? 10 : -10}deg)`,
+            filter: "brightness(1.65)",
+            offset: 0.58,
+          },
+          { transform: "scale(1.12) rotate(0deg)", filter: "brightness(1.3)" },
+        ],
+        {
+          duration: MOTION_TUNING.bombChargeDuration,
+          easing: "cubic-bezier(.2,.72,.25,1)",
+        },
       ),
-    ),
+    )
   );
 
   const effects = points.map((point) => ({ ...point, comboCore: false }));
@@ -496,12 +543,12 @@ async function animatePawBombBlast(blastCenters, isCombo) {
       ],
       {
         duration: effect.comboCore ? 1050 : isCombo ? 920 : effect.power >= 2 ? 940 : 760,
-        delay: index * 45,
+        delay: index * MOTION_TUNING.explosionChainStagger,
         easing: "cubic-bezier(.16,.72,.22,1)",
         fill: "forwards",
       },
     );
-    animation.finished.finally(() => blast.remove());
+    animation.finished.then(() => blast.remove(), () => blast.remove());
     return waitForAnimation(animation);
   });
 
@@ -520,19 +567,45 @@ async function animatePawBombBlast(blastCenters, isCombo) {
           { transform: "translate3d(4px,-2px,0)" },
           { transform: "translate3d(0,0,0)" },
         ],
-    { duration: isCombo ? 620 : 420, delay: 130, easing: "ease-out" },
+    { duration: isCombo ? 620 : 420, delay: 60, easing: "ease-out" },
   );
 
-  await Promise.all([...blastAnimations, waitForAnimation(shake)]);
+  return Promise.all([
+    ...chargeAnimations,
+    ...blastAnimations,
+    waitForAnimation(shake),
+  ]);
 }
 
-async function animateFall(clearedBoard) {
-  if (reducedMotion) return;
+function columnsWithGaps(board) {
+  const lockedColumns = new Set();
+  for (let column = 0; column < board[0].length; column += 1) {
+    if (board.some((row) => row[column] === null)) lockedColumns.add(column);
+  }
+  return lockedColumns;
+}
+
+function animateFall(clearedBoard) {
+  const lockedColumns = columnsWithGaps(clearedBoard);
+  if (reducedMotion) {
+    return {
+      lockedColumns,
+      resolutionReady: Promise.resolve(),
+      finished: Promise.resolve(),
+    };
+  }
   const first = tileElement({ row: 0, column: 0 });
   const secondRow = tileElement({ row: 1, column: 0 });
-  if (!first || !secondRow) return;
+  if (!first || !secondRow) {
+    return {
+      lockedColumns,
+      resolutionReady: Promise.resolve(),
+      finished: Promise.resolve(),
+    };
+  }
   const rowDistance = secondRow.getBoundingClientRect().top - first.getBoundingClientRect().top;
   const animations = [];
+  let longestAnimation = 0;
 
   for (let column = 0; column < clearedBoard[0].length; column += 1) {
     const segments = [];
@@ -561,9 +634,12 @@ async function animateFall(clearedBoard) {
         const distance = destinationRow - sourceRow;
         if (distance <= 0) continue;
 
+        const duration = fallDurationForDistance(distance);
+        const delay = column * MOTION_TUNING.fallColumnStagger;
+        longestAnimation = Math.max(longestAnimation, duration + delay);
         animations.push(
           waitForAnimation(
-            tileVisual(element).animate(
+            element.animate(
               [
                 {
                   opacity: 1,
@@ -579,8 +655,8 @@ async function animateFall(clearedBoard) {
                 { opacity: 1, transform: "translate3d(0,0,0) scale(1)" },
               ],
               {
-                duration: fallDurationForDistance(distance),
-                delay: column * MOTION_TUNING.fallColumnStagger,
+                duration,
+                delay,
               },
             ),
           ),
@@ -588,7 +664,11 @@ async function animateFall(clearedBoard) {
       }
     }
   }
-  await Promise.all(animations);
+  return {
+    lockedColumns,
+    resolutionReady: sleep(longestAnimation * MOTION_TUNING.fallResolutionProgress),
+    finished: Promise.all(animations),
+  };
 }
 
 async function animateReshuffle() {
@@ -622,6 +702,10 @@ function pulseScore() {
 }
 
 function showStart() {
+  flowGeneration += 1;
+  interactionWindow = null;
+  dragGesture = null;
+  busy = false;
   elements.dialog.close?.();
   elements.startScreen.hidden = false;
   elements.gameScreen.hidden = true;
@@ -725,6 +809,9 @@ function renderCollection() {
 }
 
 function restartGame() {
+  flowGeneration += 1;
+  interactionWindow = null;
+  dragGesture = null;
   catProgress = loadCatProgress();
   activeCat = getActiveCat(catProgress);
   if (!activeCat) {
@@ -791,7 +878,7 @@ function render() {
       button.type = "button";
       button.className = tile ? `tile tile-${tile}` : "tile empty";
       button.setAttribute("role", "gridcell");
-      button.disabled = busy || objectCollected || tile === null || tile === BLOCKED_TILE;
+      button.disabled = !canInteractAt(position) || tile === null || tile === BLOCKED_TILE;
       button.dataset.row = String(rowIndex);
       button.dataset.column = String(columnIndex);
 
@@ -908,7 +995,7 @@ async function completeCatReveal() {
 }
 
 async function handleTileTap(position) {
-  if (busy || objectCollected) return;
+  if (!canInteractAt(position)) return;
 
   if (isBombTile(state.board[position.row][position.column])) {
     selected = null;
@@ -934,10 +1021,12 @@ async function handleTileTap(position) {
 }
 
 async function performSwap(first, second, keepSecondSelectedOnFailure = false, directDrag = null) {
+  const attemptedDuringFlow = flowGeneration;
+  const wasBusy = busy;
   const result = engine.trySwap(state, first, second);
   if (!result.accepted) {
     if (isAdjacent(first, second)) {
-      busy = true;
+      if (!wasBusy) busy = true;
       selected = null;
       if (directDrag) {
         elements.board.setAttribute("aria-busy", "true");
@@ -946,7 +1035,8 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
         render();
         await animateSwap(first, second, true);
       }
-      busy = false;
+      if (flowGeneration !== attemptedDuringFlow) return;
+      if (!wasBusy) busy = false;
     }
     selected = keepSecondSelectedOnFailure ? second : null;
     setMessage("Nur Nachbarn tauschen – die Reihe muss 3+ ergeben");
@@ -955,18 +1045,27 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
   }
 
   const gainedPoints = result.frames.at(-1).score - state.score;
+  const flowId = ++flowGeneration;
   selected = null;
   busy = true;
+  interactionWindow = null;
   setMessage("Miau! Kombination läuft …");
+  let motionPromise;
+  let resolutionDelay;
   if (directDrag) {
     elements.board.setAttribute("aria-busy", "true");
-    await animateDirectDragRelease(directDrag, true);
+    resolutionDelay = directDragResolutionDelay(directDrag);
+    motionPromise = animateDirectDragRelease(directDrag, true);
   } else {
     render();
-    await animateSwap(first, second);
+    resolutionDelay = MOTION_TUNING.swapDuration * MOTION_TUNING.swapResolutionProgress;
+    motionPromise = animateSwap(first, second);
   }
+  motionPromise.catch(() => undefined);
+  if (resolutionDelay > 0) await sleep(resolutionDelay);
+  if (flowId !== flowGeneration) return;
 
-  await playAcceptedResult(result, gainedPoints);
+  await playAcceptedResult(result, gainedPoints, flowId, [first, second]);
 }
 
 async function performBombTap(position) {
@@ -974,27 +1073,36 @@ async function performBombTap(position) {
   if (!result.accepted) return;
 
   const gainedPoints = result.frames.at(-1).score - state.score;
+  const flowId = ++flowGeneration;
   busy = true;
-  setMessage("Mini-Pfotenbombe wird gezündet …");
+  interactionWindow = null;
+  setMessage("Pfotenbombe!");
   elements.board.setAttribute("aria-busy", "true");
-  await playAcceptedResult(result, gainedPoints);
+  await playAcceptedResult(result, gainedPoints, flowId);
 }
 
-async function playAcceptedResult(result, gainedPoints) {
+async function playAcceptedResult(result, gainedPoints, flowId, swappedPositions = []) {
+  if (flowId !== flowGeneration) return;
   state = result.frames[0];
   render();
+  animateSwapLanding(swappedPositions);
   if (result.specialActivated) {
-    await animatePawBombBlast(result.blastCenters ?? [], result.specialCombo);
+    animatePawBombBlast(result.blastCenters ?? [], result.specialCombo).catch(() => undefined);
+    if (!reducedMotion) await sleep(MOTION_TUNING.explosionImpactDelay);
+    if (flowId !== flowGeneration) return;
   }
   let previousBoard = state.board;
   for (let index = 1; index < result.frames.length; index += 1) {
+    if (flowId !== flowGeneration) return;
     const frame = result.frames[index];
     const hasGap = frame.board.some((row) => row.some((tile) => tile === null));
     const previousHasGap = previousBoard.some((row) => row.some((tile) => tile === null));
 
     if (hasGap) {
+      closeFallInteractionWindow(flowId);
       const isInitialBombClear = result.specialActivated && index === 1;
       await animateClears(previousBoard, frame.board, isInitialBombClear ? 4 : 8);
+      if (flowId !== flowGeneration) return;
       revealObjectUnderClearedTiles(previousBoard, frame.board);
       state = frame;
       render();
@@ -1004,16 +1112,30 @@ async function playAcceptedResult(result, gainedPoints) {
       }
     } else if (previousHasGap) {
       state = frame;
+      interactionWindow = {
+        type: "fall",
+        flowId,
+        lockedColumns: columnsWithGaps(previousBoard),
+      };
       render();
-      await animateFall(previousBoard);
+      const fallMotion = animateFall(previousBoard);
+      const nextFrame = result.frames[index + 1];
+      const nextIsClear = nextFrame?.board.some((row) => row.some((tile) => tile === null));
+      await (nextIsClear ? fallMotion.resolutionReady : fallMotion.finished);
+      if (flowId !== flowGeneration) return;
+      closeFallInteractionWindow(flowId);
     } else {
+      closeFallInteractionWindow(flowId);
       state = frame;
       render();
       await animateReshuffle();
+      if (flowId !== flowGeneration) return;
     }
     previousBoard = frame.board;
   }
 
+  if (flowId !== flowGeneration) return;
+  interactionWindow = null;
   busy = false;
   const discoveredNow = revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected;
   if (result.specialActivated) {
@@ -1065,7 +1187,7 @@ function clearDragHighlights() {
 }
 
 elements.board.addEventListener("pointerdown", (event) => {
-  if (busy || objectCollected || event.button > 0) return;
+  if (objectCollected || event.button > 0) return;
   const target = tileAtPoint(event.clientX, event.clientY);
   if (!target) return;
 
@@ -1096,15 +1218,30 @@ elements.board.addEventListener("pointermove", (event) => {
   dragGesture.dragging = true;
   updateDirectDrag(dragGesture, event.clientX, event.clientY);
 
-  if (dragGesture.target && dragGesture.progress >= 0.28) {
-    setMessage("Loslassen zum Tauschen");
+  if (dragGesture.target && dragGesture.progress >= MOTION_TUNING.swapResolutionProgress) {
+    const gesture = dragGesture;
+    dragGesture = null;
+    suppressNextClick = true;
+    selected = null;
+    performSwap(gesture.start, gesture.target, false, gesture).catch(() => {
+      resetDragStyles(gesture);
+    });
+  } else if (dragGesture.target && dragGesture.progress >= 0.28) {
+    setMessage("Über die Hälfte ziehen oder loslassen");
   } else {
     setMessage("Teil weiter in eine Richtung ziehen");
   }
 });
 
 elements.board.addEventListener("pointerup", async (event) => {
-  if (!dragGesture || dragGesture.pointerId !== event.pointerId) return;
+  if (!dragGesture || dragGesture.pointerId !== event.pointerId) {
+    if (suppressNextClick) {
+      window.setTimeout(() => {
+        suppressNextClick = false;
+      }, 0);
+    }
+    return;
+  }
   const gesture = dragGesture;
   dragGesture = null;
 
@@ -1130,6 +1267,7 @@ elements.board.addEventListener("pointerup", async (event) => {
 });
 
 elements.board.addEventListener("pointercancel", async () => {
+  if (!dragGesture) return;
   const gesture = dragGesture;
   dragGesture = null;
   if (gesture?.dragging) await animateDirectDragRelease(gesture, false);
