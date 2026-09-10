@@ -1,11 +1,9 @@
 package com.example.catsdom.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,15 +50,18 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.catsdom.game.GameEngine
 import com.example.catsdom.game.Position
 import com.example.catsdom.game.TileType
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -69,6 +71,20 @@ private val Plum = Color(0xFF7A4E8E)
 private val Coral = Color(0xFFFF806D)
 private val Mint = Color(0xFF83D6B2)
 private val BoardBlue = Color(0xFF5E86B3)
+
+private enum class TileMotionKind {
+    SWAP,
+    FALL,
+    CLEAR,
+}
+
+private data class TileMotion(
+    val kind: TileMotionKind,
+    val startRowOffset: Float = 0f,
+    val startColumnOffset: Float = 0f,
+    val durationMs: Int,
+    val delayMs: Int = 0,
+)
 
 @Composable
 fun CatsdomApp(
@@ -174,11 +190,15 @@ private fun GameScreen(onBackToStart: () -> Unit) {
     var selected by remember { mutableStateOf<Position?>(null) }
     var resolving by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Wähle zwei benachbarte Felder") }
+    var tileMotions by remember { mutableStateOf<Map<Position, TileMotion>>(emptyMap()) }
+    var motionSequence by remember { mutableStateOf(0) }
 
     fun restart() {
         state = engine.newGame()
         selected = null
         resolving = false
+        tileMotions = emptyMap()
+        motionSequence += 1
         message = "Wähle zwei benachbarte Felder"
     }
 
@@ -213,6 +233,8 @@ private fun GameScreen(onBackToStart: () -> Unit) {
                 board = state.board,
                 selected = selected,
                 enabled = !resolving && state.movesLeft > 0,
+                tileMotions = tileMotions,
+                motionSequence = motionSequence,
                 onTileTap = { position ->
                     val currentSelection = selected
                     when {
@@ -234,10 +256,46 @@ private fun GameScreen(onBackToStart: () -> Unit) {
                                 resolving = true
                                 val gainedPoints = result.finalState.score - state.score
                                 scope.launch {
-                                    result.frames.forEach { frame ->
-                                        state = frame
+                                    val swapFrame = result.frames.first()
+                                    state = swapFrame
+                                    tileMotions = swapMotions(currentSelection, position)
+                                    motionSequence += 1
+                                    delay(MotionTuning.swapDurationMs.toLong())
+
+                                    var previousBoard = swapFrame.board
+                                    for (frameIndex in 1 until result.frames.size) {
+                                        val frame = result.frames[frameIndex]
                                         val hasGap = frame.board.any { row -> row.any { it == null } }
-                                        delay(if (hasGap) 190 else 130)
+                                        val previousHasGap = previousBoard.any { row -> row.any { it == null } }
+
+                                        when {
+                                            hasGap -> {
+                                                tileMotions = clearMotions(previousBoard, frame.board)
+                                                motionSequence += 1
+                                                delay(MotionTuning.clearDurationMs.toLong())
+                                                state = frame
+                                            }
+                                            previousHasGap -> {
+                                                val falling = fallMotions(previousBoard)
+                                                state = frame
+                                                tileMotions = falling
+                                                motionSequence += 1
+                                                val phaseDuration = falling.values.maxOfOrNull {
+                                                    it.durationMs + it.delayMs
+                                                } ?: 0
+                                                delay(phaseDuration.toLong())
+                                            }
+                                            else -> {
+                                                state = frame
+                                                tileMotions = emptyMap()
+                                                motionSequence += 1
+                                            }
+                                        }
+                                        previousBoard = frame.board
+                                    }
+                                    tileMotions = emptyMap()
+                                    if (MotionTuning.cascadeDelayMs > 0) {
+                                        delay(MotionTuning.cascadeDelayMs.toLong())
                                     }
                                     message = "+$gainedPoints Punkte · ${result.removedTiles} Teile entfernt"
                                     resolving = false
@@ -309,11 +367,80 @@ private fun ScoreCard(label: String, value: String, modifier: Modifier = Modifie
     }
 }
 
+private fun swapMotions(first: Position, second: Position): Map<Position, TileMotion> {
+    val rowDelta = second.row - first.row
+    val columnDelta = second.column - first.column
+    return mapOf(
+        first to TileMotion(
+            kind = TileMotionKind.SWAP,
+            startRowOffset = rowDelta.toFloat(),
+            startColumnOffset = columnDelta.toFloat(),
+            durationMs = MotionTuning.swapDurationMs,
+        ),
+        second to TileMotion(
+            kind = TileMotionKind.SWAP,
+            startRowOffset = -rowDelta.toFloat(),
+            startColumnOffset = -columnDelta.toFloat(),
+            durationMs = MotionTuning.swapDurationMs,
+        ),
+    )
+}
+
+private fun clearMotions(
+    beforeBoard: List<List<TileType?>>,
+    clearedBoard: List<List<TileType?>>,
+): Map<Position, TileMotion> = buildMap {
+    beforeBoard.forEachIndexed { row, tiles ->
+        tiles.forEachIndexed { column, tile ->
+            if (tile != null && clearedBoard[row][column] == null) {
+                put(
+                    Position(row, column),
+                    TileMotion(
+                        kind = TileMotionKind.CLEAR,
+                        durationMs = MotionTuning.clearDurationMs,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun fallMotions(clearedBoard: List<List<TileType?>>): Map<Position, TileMotion> =
+    buildMap {
+        val rowCount = clearedBoard.size
+        val columnCount = clearedBoard.firstOrNull()?.size ?: 0
+        for (column in 0 until columnCount) {
+            val sourceRows = (0 until rowCount).filter { row -> clearedBoard[row][column] != null }
+            val newTileCount = rowCount - sourceRows.size
+            for (destinationRow in 0 until rowCount) {
+                val sourceRow = if (destinationRow < newTileCount) {
+                    destinationRow - newTileCount
+                } else {
+                    sourceRows[destinationRow - newTileCount]
+                }
+                val distance = destinationRow - sourceRow
+                if (distance > 0) {
+                    put(
+                        Position(destinationRow, column),
+                        TileMotion(
+                            kind = TileMotionKind.FALL,
+                            startRowOffset = -distance.toFloat(),
+                            durationMs = MotionTuning.fallDurationMs(distance),
+                            delayMs = column * MotionTuning.fallColumnStaggerMs,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
 @Composable
 private fun PuzzleBoard(
     board: List<List<TileType?>>,
     selected: Position?,
     enabled: Boolean,
+    tileMotions: Map<Position, TileMotion>,
+    motionSequence: Int,
     onTileTap: (Position) -> Unit,
 ) {
     Surface(
@@ -335,12 +462,15 @@ private fun PuzzleBoard(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     row.forEachIndexed { columnIndex, tile ->
+                        val position = Position(rowIndex, columnIndex)
                         PuzzleTile(
                             tile = tile,
-                            selected = selected == Position(rowIndex, columnIndex),
+                            selected = selected == position,
                             enabled = enabled,
-                            onClick = { onTileTap(Position(rowIndex, columnIndex)) },
+                            onClick = { onTileTap(position) },
                             modifier = Modifier.weight(1f),
+                            motion = tileMotions[position],
+                            motionSequence = motionSequence,
                         )
                     }
                 }
@@ -356,11 +486,90 @@ private fun PuzzleTile(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    motion: TileMotion? = null,
+    motionSequence: Int = 0,
 ) {
     val tileColor = tile?.backgroundColor() ?: Color.Transparent
+    val initialScale = when (motion?.kind) {
+        TileMotionKind.SWAP -> MotionTuning.movingPieceScale
+        TileMotionKind.FALL,
+        TileMotionKind.CLEAR,
+        null,
+        -> 1f
+    }
+    val rowOffset = remember(motionSequence) { Animatable(motion?.startRowOffset ?: 0f) }
+    val columnOffset = remember(motionSequence) { Animatable(motion?.startColumnOffset ?: 0f) }
+    val pieceScale = remember(motionSequence) { Animatable(initialScale) }
+    val pieceAlpha = remember(motionSequence) { Animatable(1f) }
+
+    LaunchedEffect(motionSequence) {
+        if (motion == null) return@LaunchedEffect
+        if (motion.delayMs > 0) delay(motion.delayMs.toLong())
+
+        when (motion.kind) {
+            TileMotionKind.CLEAR -> coroutineScope {
+                launch {
+                    pieceScale.animateTo(
+                        MotionTuning.clearedPieceScale,
+                        tween(motion.durationMs, easing = MotionTuning.clearEasing),
+                    )
+                }
+                launch {
+                    pieceAlpha.animateTo(
+                        0f,
+                        tween(motion.durationMs, easing = MotionTuning.clearEasing),
+                    )
+                }
+            }
+            TileMotionKind.SWAP,
+            TileMotionKind.FALL,
+            -> coroutineScope {
+                val movementEasing = if (motion.kind == TileMotionKind.FALL) {
+                    MotionTuning.fallEasing
+                } else {
+                    MotionTuning.swapEasing
+                }
+                launch {
+                    rowOffset.animateTo(0f, tween(motion.durationMs, easing = movementEasing))
+                }
+                launch {
+                    columnOffset.animateTo(0f, tween(motion.durationMs, easing = movementEasing))
+                }
+                launch {
+                    val movingScale = if (motion.kind == TileMotionKind.SWAP) {
+                        MotionTuning.movingPieceScale
+                    } else {
+                        1f
+                    }
+                    val landingStart = (motion.durationMs - MotionTuning.landingDurationMs)
+                        .coerceAtLeast(1)
+                    val landingPeak = landingStart + MotionTuning.landingDurationMs / 2
+                    pieceScale.animateTo(
+                        1f,
+                        keyframes {
+                            durationMillis = motion.durationMs
+                            movingScale at 0
+                            movingScale at landingStart
+                            MotionTuning.landingScale at landingPeak using MotionTuning.landingEasing
+                            1f at motion.durationMs
+                        },
+                    )
+                }
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .zIndex(if (motion != null) 1f else 0f)
+            .graphicsLayer {
+                translationX = columnOffset.value * size.width
+                translationY = rowOffset.value * size.height
+                scaleX = pieceScale.value
+                scaleY = pieceScale.value
+                alpha = pieceAlpha.value
+            }
             .clip(RoundedCornerShape(10.dp))
             .background(tileColor)
             .then(
@@ -372,13 +581,7 @@ private fun PuzzleTile(
             .padding(5.dp),
         contentAlignment = Alignment.Center,
     ) {
-        AnimatedVisibility(
-            visible = tile != null,
-            enter = fadeIn() + scaleIn(initialScale = 0.55f),
-            exit = fadeOut() + scaleOut(targetScale = 0.55f),
-        ) {
-            if (tile != null) TileDrawing(tile)
-        }
+        if (tile != null) TileDrawing(tile)
     }
 }
 

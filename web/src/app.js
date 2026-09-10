@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=24";
+} from "./game-engine.js?v=25";
 import {
   CAT_CONTENT,
   discoverActiveCat,
@@ -13,7 +13,8 @@ import {
   loadCatProgress,
   revealCatTiles,
   saveCatProgress,
-} from "./cat-progress.js?v=24";
+} from "./cat-progress.js?v=25";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=25";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -112,30 +113,54 @@ async function animateSwap(first, second, returnToOrigin = false) {
   const deltaX = secondRect.left - firstRect.left;
   const deltaY = secondRect.top - firstRect.top;
   const timing = {
-    duration: returnToOrigin ? 220 : 150,
-    easing: returnToOrigin ? "cubic-bezier(.34,1.56,.64,1)" : "cubic-bezier(.2,.8,.25,1)",
+    duration: returnToOrigin
+      ? MOTION_TUNING.invalidSwapDuration
+      : MOTION_TUNING.swapDuration,
+    easing: returnToOrigin ? MOTION_TUNING.invalidSwapEasing : MOTION_TUNING.swapEasing,
     fill: "forwards",
   };
 
   const firstFrames = returnToOrigin
     ? [
         { transform: "translate3d(0,0,0) scale(1)" },
-        { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(1.06)`, offset: 0.48 },
+        {
+          transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+          offset: 0.48,
+        },
         { transform: "translate3d(0,0,0) scale(1)" },
       ]
     : [
         { transform: "translate3d(0,0,0) scale(1)" },
-        { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(1.04)` },
+        {
+          transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+          offset: 0.82,
+        },
+        {
+          transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${MOTION_TUNING.landingScale})`,
+          offset: 0.92,
+        },
+        { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(1)` },
       ];
   const secondFrames = returnToOrigin
     ? [
         { transform: "translate3d(0,0,0) scale(1)" },
-        { transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(1.06)`, offset: 0.48 },
+        {
+          transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+          offset: 0.48,
+        },
         { transform: "translate3d(0,0,0) scale(1)" },
       ]
     : [
         { transform: "translate3d(0,0,0) scale(1)" },
-        { transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(1.04)` },
+        {
+          transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+          offset: 0.82,
+        },
+        {
+          transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(${MOTION_TUNING.landingScale})`,
+          offset: 0.92,
+        },
+        { transform: `translate3d(${-deltaX}px,${-deltaY}px,0) scale(1)` },
       ];
 
   await Promise.all([
@@ -201,7 +226,8 @@ function updateDirectDrag(gesture, clientX, clientY) {
   const sourceVisual = tileVisual(gesture.sourceElement);
   sourceVisual.style.transition = "none";
   sourceVisual.style.willChange = "transform";
-  sourceVisual.style.transform = `translate3d(${moveX}px,${moveY}px,0) scale(1.055)`;
+  const sourceScale = 1 - (1 - MOTION_TUNING.movingPieceScale) * progress;
+  sourceVisual.style.transform = `translate3d(${moveX}px,${moveY}px,0) scale(${sourceScale})`;
 
   if (targetElement) {
     targetElement.classList.add("drag-target");
@@ -209,7 +235,8 @@ function updateDirectDrag(gesture, clientX, clientY) {
     const targetVisual = tileVisual(targetElement);
     targetVisual.style.transition = "none";
     targetVisual.style.willChange = "transform";
-    targetVisual.style.transform = `translate3d(${-stepX * progress}px,${-stepY * progress}px,0) scale(${1 - progress * 0.035})`;
+    const targetScale = 1 - (1 - MOTION_TUNING.movingPieceScale) * progress;
+    targetVisual.style.transform = `translate3d(${-stepX * progress}px,${-stepY * progress}px,0) scale(${targetScale})`;
   }
 }
 
@@ -221,38 +248,71 @@ async function animateDirectDragRelease(gesture, completeSwap) {
 
   const target = gesture.targetElement;
   const duration = completeSwap
-    ? Math.max(65, 135 * (1 - gesture.progress))
-    : 150;
+    ? Math.max(
+        MOTION_TUNING.directDragMinDuration,
+        MOTION_TUNING.directDragBaseDuration * (1 - gesture.progress),
+      )
+    : MOTION_TUNING.directDragBaseDuration;
   const sourceEndX = completeSwap ? gesture.stepX : 0;
   const sourceEndY = completeSwap ? gesture.stepY : 0;
+  const sourceStartScale = 1 - (1 - MOTION_TUNING.movingPieceScale) * gesture.progress;
   const sourceAnimation = tileVisual(gesture.sourceElement).animate(
-    [
-      { transform: `translate3d(${gesture.moveX}px,${gesture.moveY}px,0) scale(1.055)` },
-      { transform: `translate3d(${sourceEndX}px,${sourceEndY}px,0) scale(1)` },
-    ],
+    completeSwap
+      ? [
+          {
+            transform: `translate3d(${gesture.moveX}px,${gesture.moveY}px,0) scale(${sourceStartScale})`,
+          },
+          {
+            transform: `translate3d(${sourceEndX}px,${sourceEndY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+            offset: 0.72,
+          },
+          {
+            transform: `translate3d(${sourceEndX}px,${sourceEndY}px,0) scale(${MOTION_TUNING.landingScale})`,
+            offset: 0.9,
+          },
+          { transform: `translate3d(${sourceEndX}px,${sourceEndY}px,0) scale(1)` },
+        ]
+      : [
+          {
+            transform: `translate3d(${gesture.moveX}px,${gesture.moveY}px,0) scale(${sourceStartScale})`,
+          },
+          { transform: "translate3d(0,0,0) scale(1)" },
+        ],
     {
       duration,
-      easing: completeSwap ? "cubic-bezier(.2,.82,.25,1)" : "cubic-bezier(.34,1.56,.64,1)",
+      easing: completeSwap ? MOTION_TUNING.swapEasing : MOTION_TUNING.invalidSwapEasing,
       fill: "forwards",
     },
   );
   const animations = [waitForAnimation(sourceAnimation)];
 
   if (target) {
+    const targetStartScale = 1 - (1 - MOTION_TUNING.movingPieceScale) * gesture.progress;
     const targetAnimation = tileVisual(target).animate(
-      [
-        {
-          transform: `translate3d(${-gesture.stepX * gesture.progress}px,${-gesture.stepY * gesture.progress}px,0) scale(${1 - gesture.progress * 0.035})`,
-        },
-        {
-          transform: completeSwap
-            ? `translate3d(${-gesture.stepX}px,${-gesture.stepY}px,0) scale(1)`
-            : "translate3d(0,0,0) scale(1)",
-        },
-      ],
+      completeSwap
+        ? [
+            {
+              transform: `translate3d(${-gesture.stepX * gesture.progress}px,${-gesture.stepY * gesture.progress}px,0) scale(${targetStartScale})`,
+            },
+            {
+              transform: `translate3d(${-gesture.stepX}px,${-gesture.stepY}px,0) scale(${MOTION_TUNING.movingPieceScale})`,
+              offset: 0.72,
+            },
+            {
+              transform: `translate3d(${-gesture.stepX}px,${-gesture.stepY}px,0) scale(${MOTION_TUNING.landingScale})`,
+              offset: 0.9,
+            },
+            { transform: `translate3d(${-gesture.stepX}px,${-gesture.stepY}px,0) scale(1)` },
+          ]
+        : [
+            {
+              transform: `translate3d(${-gesture.stepX * gesture.progress}px,${-gesture.stepY * gesture.progress}px,0) scale(${targetStartScale})`,
+            },
+            { transform: "translate3d(0,0,0) scale(1)" },
+          ],
       {
         duration,
-        easing: completeSwap ? "cubic-bezier(.2,.82,.25,1)" : "cubic-bezier(.34,1.56,.64,1)",
+        easing: completeSwap ? MOTION_TUNING.swapEasing : MOTION_TUNING.invalidSwapEasing,
         fill: "forwards",
       },
     );
@@ -322,7 +382,11 @@ async function animateClears(beforeBoard, clearedBoard, particleCount = 8) {
               },
               { opacity: 0, transform: "scale(0.05) rotate(18deg)", filter: "brightness(1.4)" },
             ],
-            { duration: 265, easing: "cubic-bezier(.25,.8,.3,1)", fill: "forwards" },
+            {
+              duration: MOTION_TUNING.clearDuration,
+              easing: "cubic-bezier(.25,.8,.3,1)",
+              fill: "forwards",
+            },
           ),
         ),
       );
@@ -335,7 +399,7 @@ async function animateClears(beforeBoard, clearedBoard, particleCount = 8) {
       { transform: "scale(1.012)", offset: 0.45 },
       { transform: "scale(1)" },
     ],
-    { duration: 220, easing: "ease-out" },
+    { duration: MOTION_TUNING.clearBoardResponseDuration, easing: "ease-out" },
   );
   await Promise.all([...animations, waitForAnimation(boardBounce)]);
 }
@@ -503,15 +567,20 @@ async function animateFall(clearedBoard) {
               [
                 {
                   opacity: 1,
-                  transform: `translate3d(0,${-distance * rowDistance}px,0) scale(${isNewTile ? 0.88 : 1})`,
+                  transform: `translate3d(0,${-distance * rowDistance}px,0) scale(1)`,
+                  easing: MOTION_TUNING.fallEasing,
                 },
-                { opacity: 1, transform: "translate3d(0,5px,0) scale(1.018)", offset: 0.88 },
+                {
+                  opacity: 1,
+                  transform: `translate3d(0,${MOTION_TUNING.landingOffsetPixels}px,0) scale(${MOTION_TUNING.landingScale})`,
+                  offset: MOTION_TUNING.landingKeyframe,
+                  easing: MOTION_TUNING.landingEasing,
+                },
                 { opacity: 1, transform: "translate3d(0,0,0) scale(1)" },
               ],
               {
-                duration: 340 + distance * 52,
-                delay: column * 10,
-                easing: "cubic-bezier(.18,.62,.24,1)",
+                duration: fallDurationForDistance(distance),
+                delay: column * MOTION_TUNING.fallColumnStagger,
               },
             ),
           ),
@@ -930,7 +999,9 @@ async function playAcceptedResult(result, gainedPoints) {
       state = frame;
       render();
       pulseScore();
-      await sleep(reducedMotion ? 0 : 12);
+      if (!reducedMotion && MOTION_TUNING.cascadeDelay > 0) {
+        await sleep(MOTION_TUNING.cascadeDelay);
+      }
     } else if (previousHasGap) {
       state = frame;
       render();

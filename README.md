@@ -4,6 +4,8 @@ Catsdom ist ein eigenständiger Katzen-Puzzle-Prototyp mit einem 8×8-Brett,
 sechs Symboltypen, Tap- und Drag-Steuerung, 3+-Erkennung, Kaskaden und Pfotenbomben.
 Erfolgreiche Züge legen die aktuell aktive Katze räumlich frei. Neun Katzen werden
 nacheinander entdeckt und bleiben in der lokalen 3×3-Sammlung gespeichert.
+Die Bewegungswerte für Tausch, Fall und Landung sind für Web und Android zentral
+gebündelt, damit sich das Spielgefühl nach Gerätetests gezielt feinjustieren lässt.
 
 ## Web-App testen
 
