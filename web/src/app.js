@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=32";
+} from "./game-engine.js?v=33";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,13 +13,13 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=32";
+} from "./cat-progress.js?v=33";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=32";
-import { CatAssetStore } from "./cat-asset-store.js?v=32";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=32";
+} from "./cat-catalog-repository.js?v=33";
+import { CatAssetStore } from "./cat-asset-store.js?v=33";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=33";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -99,10 +99,40 @@ let activeCat = getActiveCat(catProgress, catCatalog);
 let collectionReturnScreen = "start";
 let collectionSelectionBusy = false;
 let contentReady = null;
+let boardObjectShell = null;
+let boardObjectPhoto = null;
+let boardObjectCoverPieces = [];
+let activeFlowRecovery = null;
+let flowWatchdogId = null;
+const transientEffects = new Set();
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 const samePosition = (a, b) => a?.row === b?.row && a?.column === b?.column;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function removeTransientEffect(element) {
+  transientEffects.delete(element);
+  element.remove();
+}
+
+function trackTransientEffect(element, maximumLifetime = 2200) {
+  transientEffects.add(element);
+  const remove = () => removeTransientEffect(element);
+  element.addEventListener("animationend", remove, { once: true });
+  element.addEventListener("animationcancel", remove, { once: true });
+  window.setTimeout(remove, maximumLifetime);
+  return element;
+}
+
+function clearTransientEffects() {
+  for (const effect of transientEffects) effect.remove();
+  transientEffects.clear();
+}
+
+function clearFlowWatchdog() {
+  if (flowWatchdogId !== null) window.clearTimeout(flowWatchdogId);
+  flowWatchdogId = null;
+}
 
 function canInteractAt(position) {
   if (objectCollected) return false;
@@ -403,7 +433,7 @@ function spawnParticles(tile, particleCount = 8) {
   ring.style.setProperty("--burst-size", `${rect.width * 0.82}px`);
   ring.style.setProperty("--particle-color", color);
   document.body.append(ring);
-  ring.addEventListener("animationend", () => ring.remove(), { once: true });
+  trackTransientEffect(ring, 1200);
 
   for (let index = 0; index < particleCount; index += 1) {
     const angle = (Math.PI * 2 * index) / particleCount + Math.random() * 0.28;
@@ -422,7 +452,7 @@ function spawnParticles(tile, particleCount = 8) {
     particle.style.setProperty("--particle-rotation", `${100 + Math.random() * 180}deg`);
     particle.style.setProperty("--particle-delay", `${index * 5}ms`);
     document.body.append(particle);
-    particle.addEventListener("animationend", () => particle.remove(), { once: true });
+    trackTransientEffect(particle, 1200);
   }
 }
 
@@ -549,6 +579,7 @@ function animatePawBombBlast(blastCenters, isCombo) {
     blast.style.height = `${diameter}px`;
     blast.innerHTML = '<span class="paw-blast-ring"></span><span class="paw-blast-core">🐾</span>';
     document.body.append(blast);
+    transientEffects.add(blast);
 
     const animation = blast.animate(
       [
@@ -564,7 +595,11 @@ function animatePawBombBlast(blastCenters, isCombo) {
         fill: "forwards",
       },
     );
-    animation.finished.then(() => blast.remove(), () => blast.remove());
+    animation.finished.then(
+      () => removeTransientEffect(blast),
+      () => removeTransientEffect(blast),
+    );
+    window.setTimeout(() => removeTransientEffect(blast), 2200);
     return waitForAnimation(animation);
   });
 
@@ -723,10 +758,11 @@ function catAssetKey(cat) {
 
 function catImageSource(cat, { thumbnail = false } = {}) {
   if (!cat) return "";
+  if (thumbnail) return cat.thumbnailUrl;
   const runtimeUrl = catRuntimeImageUrls.get(catAssetKey(cat));
   if (runtimeUrl) return runtimeUrl;
   if (!cat.isDownloadable) return cat.imageUrl;
-  return thumbnail ? cat.thumbnailUrl : "";
+  return "";
 }
 
 function setContentStatus(text = "") {
@@ -787,6 +823,9 @@ async function prepareCatForPlay(cat) {
 
 function showStart() {
   flowGeneration += 1;
+  clearFlowWatchdog();
+  activeFlowRecovery = null;
+  clearTransientEffects();
   interactionWindow = null;
   dragGesture = null;
   busy = false;
@@ -956,6 +995,9 @@ async function selectCatForPlay(catId) {
 
 function restartGame() {
   flowGeneration += 1;
+  clearFlowWatchdog();
+  activeFlowRecovery = null;
+  clearTransientEffects();
   interactionWindow = null;
   dragGesture = null;
   catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
@@ -981,40 +1023,60 @@ function setMessage(text) {
   elements.message.textContent = text;
 }
 
+function ensureBoardObject() {
+  if (boardObjectShell) return boardObjectShell;
+
+  boardObjectShell = document.createElement("div");
+  boardObjectShell.className = "board-object-shell";
+  boardObjectShell.setAttribute("aria-hidden", "true");
+
+  const objectLayer = document.createElement("div");
+  objectLayer.className = "board-object";
+  objectLayer.style.gridRow = `${OBJECT_TOP + 1} / span ${OBJECT_SIZE}`;
+  objectLayer.style.gridColumn = `${OBJECT_LEFT + 1} / span ${OBJECT_SIZE}`;
+
+  boardObjectPhoto = document.createElement("img");
+  boardObjectPhoto.alt = "";
+  boardObjectPhoto.decoding = "async";
+  boardObjectPhoto.fetchPriority = "high";
+  objectLayer.append(boardObjectPhoto);
+
+  const cover = document.createElement("div");
+  cover.className = "board-object-cover";
+  boardObjectCoverPieces = Array.from({ length: OBJECT_SIZE ** 2 }, () => {
+    const piece = document.createElement("span");
+    cover.append(piece);
+    return piece;
+  });
+  objectLayer.append(cover);
+  boardObjectShell.append(objectLayer);
+  return boardObjectShell;
+}
+
+function updateBoardObject() {
+  const assetKey = activeCat ? catAssetKey(activeCat) : "";
+  if (boardObjectPhoto.dataset.assetKey !== assetKey) {
+    boardObjectPhoto.dataset.assetKey = assetKey;
+    boardObjectPhoto.src = catImageSource(activeCat);
+  }
+  boardObjectCoverPieces.forEach((piece, pieceIndex) => {
+    piece.classList.toggle("revealed", revealedObjectPieces.has(pieceIndex));
+    piece.classList.toggle("newly-revealed", newlyRevealedObjectPieces.has(pieceIndex));
+  });
+}
+
 function render() {
   elements.score.textContent = state.score.toLocaleString("de-DE");
   elements.moves.textContent = state.moves;
   elements.activeCatLabel.textContent = activeCat?.name ?? "Katzen";
   elements.board.setAttribute("aria-busy", String(busy));
   elements.board.classList.toggle("reveal-complete", objectCollected);
-  elements.board.replaceChildren();
-
-  {
-    const objectShell = document.createElement("div");
-    objectShell.className = "board-object-shell";
-    objectShell.setAttribute("aria-hidden", "true");
-    const objectLayer = document.createElement("div");
-    objectLayer.className = "board-object";
-    objectLayer.style.gridRow = `${OBJECT_TOP + 1} / span ${OBJECT_SIZE}`;
-    objectLayer.style.gridColumn = `${OBJECT_LEFT + 1} / span ${OBJECT_SIZE}`;
-    const photo = document.createElement("img");
-    photo.src = catImageSource(activeCat);
-    photo.alt = "";
-    photo.decoding = "async";
-    photo.fetchPriority = "high";
-    objectLayer.append(photo);
-    const cover = document.createElement("div");
-    cover.className = "board-object-cover";
-    for (let pieceIndex = 0; pieceIndex < OBJECT_SIZE ** 2; pieceIndex += 1) {
-      const piece = document.createElement("span");
-      if (revealedObjectPieces.has(pieceIndex)) piece.classList.add("revealed");
-      if (newlyRevealedObjectPieces.has(pieceIndex)) piece.classList.add("newly-revealed");
-      cover.append(piece);
-    }
-    objectLayer.append(cover);
-    objectShell.append(objectLayer);
-    elements.board.append(objectShell);
+  const objectShell = ensureBoardObject();
+  for (const child of [...elements.board.children]) {
+    if (child !== objectShell) child.remove();
   }
+  if (objectShell.parentElement !== elements.board) elements.board.append(objectShell);
+  updateBoardObject();
 
   state.board.forEach((row, rowIndex) => {
     row.forEach((tile, columnIndex) => {
@@ -1061,7 +1123,7 @@ function render() {
 
       button.addEventListener("click", () => {
         if (suppressNextClick) return;
-        handleTileTap(position);
+        handleTileTap(position).catch(recoverInteractionError);
       });
       elements.board.append(button);
     });
@@ -1075,8 +1137,8 @@ function renderObjectProgress() {
     : `${revealedObjectPieces.size}/${OBJECT_CELLS.length}`;
 }
 
-function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
-  const newlyRevealed = [];
+function revealPiecesBetweenBoards(beforeBoard, clearedBoard) {
+  const pieces = [];
   for (let pieceIndex = 0; pieceIndex < OBJECT_CELLS.length; pieceIndex += 1) {
     const { row, column } = OBJECT_CELLS[pieceIndex];
     if (
@@ -1085,16 +1147,94 @@ function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
       clearedBoard[row][column] === null &&
       !revealedObjectPieces.has(pieceIndex)
     ) {
-      revealedObjectPieces.add(pieceIndex);
-      newlyRevealedObjectPieces.add(pieceIndex);
-      newlyRevealed.push(pieceIndex);
+      pieces.push(pieceIndex);
     }
   }
-  if (newlyRevealed.length > 0 && activeCat) {
-    catProgress = revealCatTiles(catProgress, activeCat.id, newlyRevealed, catCatalog);
+  return pieces;
+}
+
+function applyRevealedPieces(pieceIndices, { animate = true } = {}) {
+  const addedPieces = [];
+  for (const pieceIndex of pieceIndices) {
+    if (revealedObjectPieces.has(pieceIndex)) continue;
+    revealedObjectPieces.add(pieceIndex);
+    if (animate) newlyRevealedObjectPieces.add(pieceIndex);
+    addedPieces.push(pieceIndex);
+  }
+  if (addedPieces.length > 0 && activeCat) {
+    catProgress = revealCatTiles(catProgress, activeCat.id, addedPieces, catCatalog);
     saveCatProgress(catProgress);
   }
   renderObjectProgress();
+  return addedPieces;
+}
+
+function revealObjectUnderClearedTiles(beforeBoard, clearedBoard) {
+  applyRevealedPieces(revealPiecesBetweenBoards(beforeBoard, clearedBoard));
+}
+
+function revealPiecesForResult(result) {
+  const pieces = new Set();
+  let previousBoard = result.frames[0]?.board;
+  for (let index = 1; previousBoard && index < result.frames.length; index += 1) {
+    const board = result.frames[index].board;
+    if (board.some((row) => row.some((tile) => tile === null))) {
+      for (const piece of revealPiecesBetweenBoards(previousBoard, board)) pieces.add(piece);
+    }
+    previousBoard = board;
+  }
+  return [...pieces];
+}
+
+function armFlowRecovery(result, flowId) {
+  clearFlowWatchdog();
+  activeFlowRecovery = {
+    flowId,
+    finalState: result.frames.at(-1),
+    revealPieces: revealPiecesForResult(result),
+  };
+  flowWatchdogId = window.setTimeout(() => recoverInterruptedFlow(), 20000);
+}
+
+function recoverInterruptedFlow() {
+  const recovery = activeFlowRecovery;
+  if (!recovery || recovery.flowId !== flowGeneration) return false;
+
+  flowGeneration += 1;
+  clearFlowWatchdog();
+  activeFlowRecovery = null;
+  interactionWindow = null;
+  selected = null;
+  const gesture = dragGesture;
+  dragGesture = null;
+  if (gesture) resetDragStyles(gesture);
+  clearTransientEffects();
+  try {
+    for (const animation of elements.board.getAnimations({ subtree: true })) animation.cancel();
+  } catch {
+    // Older Safari versions may not support subtree animation lookup.
+  }
+
+  state = recovery.finalState;
+  applyRevealedPieces(recovery.revealPieces, { animate: false });
+  busy = false;
+  render();
+  setMessage("Spiel automatisch fortgesetzt 🐾");
+
+  if (revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected) {
+    completeCatReveal().catch(() => showGameOver(activeCat));
+  }
+  return true;
+}
+
+function recoverInteractionError() {
+  if (recoverInterruptedFlow()) return;
+  busy = false;
+  interactionWindow = null;
+  selected = null;
+  clearDragHighlights();
+  render();
+  setMessage("Das Spiel ist wieder bereit – bitte noch einmal ziehen.");
 }
 
 function showGameOver(completedCat) {
@@ -1190,6 +1330,7 @@ async function performSwap(first, second, keepSecondSelectedOnFailure = false, d
 
   const gainedPoints = result.frames.at(-1).score - state.score;
   const flowId = ++flowGeneration;
+  armFlowRecovery(result, flowId);
   selected = null;
   busy = true;
   interactionWindow = null;
@@ -1218,6 +1359,7 @@ async function performBombTap(position) {
 
   const gainedPoints = result.frames.at(-1).score - state.score;
   const flowId = ++flowGeneration;
+  armFlowRecovery(result, flowId);
   busy = true;
   interactionWindow = null;
   setMessage("Pfotenbombe!");
@@ -1281,6 +1423,8 @@ async function playAcceptedResult(result, gainedPoints, flowId, swappedPositions
   if (flowId !== flowGeneration) return;
   interactionWindow = null;
   busy = false;
+  clearFlowWatchdog();
+  activeFlowRecovery = null;
   const discoveredNow = revealedObjectPieces.size === OBJECT_SIZE ** 2 && !objectCollected;
   if (result.specialActivated) {
     setMessage(
@@ -1369,6 +1513,7 @@ elements.board.addEventListener("pointermove", (event) => {
     selected = null;
     performSwap(gesture.start, gesture.target, false, gesture).catch(() => {
       resetDragStyles(gesture);
+      recoverInteractionError();
     });
   } else if (dragGesture.target && dragGesture.progress >= 0.28) {
     setMessage("Über die Hälfte ziehen oder loslassen");
@@ -1378,45 +1523,53 @@ elements.board.addEventListener("pointermove", (event) => {
 });
 
 elements.board.addEventListener("pointerup", async (event) => {
-  if (!dragGesture || dragGesture.pointerId !== event.pointerId) {
-    if (suppressNextClick) {
-      window.setTimeout(() => {
-        suppressNextClick = false;
-      }, 0);
+  try {
+    if (!dragGesture || dragGesture.pointerId !== event.pointerId) {
+      if (suppressNextClick) {
+        window.setTimeout(() => {
+          suppressNextClick = false;
+        }, 0);
+      }
+      return;
     }
-    return;
-  }
-  const gesture = dragGesture;
-  dragGesture = null;
+    const gesture = dragGesture;
+    dragGesture = null;
 
-  if (!gesture.dragging) return;
-  suppressNextClick = true;
-  window.setTimeout(() => {
-    suppressNextClick = false;
-  }, 0);
+    if (!gesture.dragging) return;
+    suppressNextClick = true;
+    window.setTimeout(() => {
+      suppressNextClick = false;
+    }, 0);
 
-  if (!gesture.target || gesture.progress < 0.28) {
-    busy = true;
-    elements.board.setAttribute("aria-busy", "true");
-    await animateDirectDragRelease(gesture, false);
-    busy = false;
+    if (!gesture.target || gesture.progress < 0.28) {
+      busy = true;
+      elements.board.setAttribute("aria-busy", "true");
+      await animateDirectDragRelease(gesture, false);
+      busy = false;
+      selected = null;
+      setMessage("Etwas weiter ziehen, um zu tauschen");
+      render();
+      return;
+    }
+
     selected = null;
-    setMessage("Etwas weiter ziehen, um zu tauschen");
-    render();
-    return;
+    await performSwap(gesture.start, gesture.target, false, gesture);
+  } catch {
+    recoverInteractionError();
   }
-
-  selected = null;
-  await performSwap(gesture.start, gesture.target, false, gesture);
 });
 
 elements.board.addEventListener("pointercancel", async () => {
-  if (!dragGesture) return;
-  const gesture = dragGesture;
-  dragGesture = null;
-  if (gesture?.dragging) await animateDirectDragRelease(gesture, false);
-  else resetDragStyles(gesture);
-  setMessage("Ziehen abgebrochen");
+  try {
+    if (!dragGesture) return;
+    const gesture = dragGesture;
+    dragGesture = null;
+    if (gesture?.dragging) await animateDirectDragRelease(gesture, false);
+    else resetDragStyles(gesture);
+    setMessage("Ziehen abgebrochen");
+  } catch {
+    recoverInteractionError();
+  }
 });
 
 elements.startButton.addEventListener("click", showGame);
@@ -1479,7 +1632,9 @@ window.addEventListener("online", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") contentReady = syncCatContent();
+  if (document.visibilityState !== "visible") return;
+  if (!elements.gameScreen.hidden && busy && !recoverInterruptedFlow()) recoverInteractionError();
+  contentReady = syncCatContent();
 });
 
 if ("serviceWorker" in navigator) {

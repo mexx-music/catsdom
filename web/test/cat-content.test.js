@@ -27,6 +27,12 @@ test("the nine bundled cats use the canonical offline content model", () => {
   assert.equal(BUNDLED_CATALOG.cats.every((cat) => cat.sourceType === "bundled"), true);
   assert.equal(BUNDLED_CATALOG.cats.every((cat) => cat.isDownloadable === false), true);
   assert.equal(BUNDLED_CATALOG.cats.every((cat) => cat.imageUrl.endsWith(".webp")), true);
+  assert.equal(
+    BUNDLED_CATALOG.cats.every(
+      (cat) => cat.thumbnailUrl.includes("/thumbs/") && cat.thumbnailUrl !== cat.imageUrl,
+    ),
+    true,
+  );
 });
 
 test("malformed entries are rejected without breaking valid remote cats", () => {

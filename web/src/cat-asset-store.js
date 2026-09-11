@@ -1,4 +1,4 @@
-import { MAX_CAT_DOWNLOAD_BYTES, SUPPORTED_CAT_IMAGE_TYPES } from "./cat-content.js?v=32";
+import { MAX_CAT_DOWNLOAD_BYTES, SUPPORTED_CAT_IMAGE_TYPES } from "./cat-content.js?v=33";
 
 export const CAT_ASSET_CACHE_NAME = "catsdom-downloaded-cats-v1";
 export const CAT_ASSET_STATE_STORAGE_KEY = "catsdom.downloadedCatState.v1";

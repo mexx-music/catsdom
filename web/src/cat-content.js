@@ -31,7 +31,7 @@ export const BUNDLED_CATALOG = Object.freeze({
         id: `cat_${number}`,
         name,
         imageUrl: `./assets/cats/cat_${number}.webp`,
-        thumbnailUrl: `./assets/cats/cat_${number}.webp`,
+        thumbnailUrl: `./assets/cats/thumbs/cat_${number}.webp`,
         imageType: "image/webp",
         sourceType: "bundled",
         collectionId: "starter",
