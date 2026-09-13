@@ -352,6 +352,58 @@ button:focus-visible {
   gap: clamp(10px, 2.8vw, 18px);
 }
 
+.collection-folder {
+  min-width: 0;
+  padding: clamp(10px, 2vw, 14px);
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  border-radius: clamp(16px, 4vw, 24px);
+  color: #3e3150;
+  background: linear-gradient(145deg, rgba(255, 246, 207, 0.96), rgba(255, 221, 180, 0.94));
+  box-shadow: 0 8px 22px rgba(62, 49, 80, 0.12);
+  text-align: center;
+  cursor: pointer;
+  contain: layout paint style;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.collection-folder:hover,
+.collection-folder:focus-visible {
+  border-color: rgba(255, 128, 109, 0.82);
+  box-shadow: 0 10px 26px rgba(255, 128, 109, 0.22);
+  transform: translateY(-2px);
+}
+
+.collection-folder:active { transform: scale(0.98); }
+.collection-folder.active { border-color: rgba(255, 128, 109, 0.74); }
+
+.collection-folder-icon {
+  display: grid;
+  width: clamp(48px, 12vw, 68px);
+  margin: 0 auto;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 3px solid rgba(255, 255, 255, 0.82);
+  border-radius: 18px;
+  background: linear-gradient(145deg, #ff9b77, #d76275);
+  box-shadow: 0 6px 14px rgba(117, 56, 75, 0.2);
+  font-size: clamp(1.35rem, 5vw, 2rem);
+}
+
+.collection-folder h2 {
+  overflow: hidden;
+  margin: 9px 0 0;
+  font-size: clamp(0.76rem, 3vw, 1rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-folder p {
+  margin: 3px 0 0;
+  color: #8a5360;
+  font-size: clamp(0.62rem, 2.4vw, 0.76rem);
+  font-weight: 850;
+}
+
 .cat-card {
   min-width: 0;
   padding: clamp(7px, 1.8vw, 11px);

@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=34";
+} from "./game-engine.js?v=35";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,13 +13,14 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=34";
+} from "./cat-progress.js?v=35";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=34";
-import { CatAssetStore } from "./cat-asset-store.js?v=34";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=34";
+} from "./cat-catalog-repository.js?v=35";
+import { CatAssetStore } from "./cat-asset-store.js?v=35";
+import { buildCatCollectionView } from "./cat-collection-view.js?v=35";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=35";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -70,6 +71,7 @@ const elements = {
   startProgress: document.querySelector("#start-progress"),
   contentStatus: document.querySelector("#content-status"),
   collectionProgress: document.querySelector("#collection-progress"),
+  collectionTitle: document.querySelector("#collection-title"),
   catGrid: document.querySelector("#cat-grid"),
 };
 
@@ -80,8 +82,9 @@ const catalogRepository = new CatCatalogRepository({
     document.querySelector('meta[name="catsdom-catalog-url"]')?.content ?? "./cats/catalog.json",
 });
 const catAssetStore = new CatAssetStore();
-let catCatalog = catalogRepository.loadCatalog().cats;
-let pendingCatCatalog = null;
+let catContentCatalog = catalogRepository.loadCatalog();
+let catCatalog = catContentCatalog.cats;
+let pendingCatContentCatalog = null;
 const catRuntimeImageUrls = new Map();
 let state = engine.newGame();
 let selected = null;
@@ -98,6 +101,7 @@ let catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
 let activeCat = getActiveCat(catProgress, catCatalog);
 let collectionReturnScreen = "start";
 let collectionSelectionBusy = false;
+let openCollectionId = null;
 let contentReady = null;
 let boardObjectShell = null;
 let boardObjectPhoto = null;
@@ -771,9 +775,10 @@ function setContentStatus(text = "") {
 }
 
 function applyPendingCatCatalog() {
-  if (!pendingCatCatalog) return false;
-  catCatalog = pendingCatCatalog;
-  pendingCatCatalog = null;
+  if (!pendingCatContentCatalog) return false;
+  catContentCatalog = pendingCatContentCatalog;
+  catCatalog = catContentCatalog.cats;
+  pendingCatContentCatalog = null;
   catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
   activeCat = getActiveCat(catProgress, catCatalog);
   updateCollectionProgress();
@@ -783,10 +788,11 @@ function applyPendingCatCatalog() {
 async function syncCatContent({ force = false } = {}) {
   const result = await catalogRepository.sync({ force });
   if (!elements.gameScreen.hidden) {
-    pendingCatCatalog = result.catalog.cats;
+    pendingCatContentCatalog = result.catalog;
     return result;
   }
-  catCatalog = result.catalog.cats;
+  catContentCatalog = result.catalog;
+  catCatalog = catContentCatalog.cats;
   catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
   activeCat = getActiveCat(catProgress, catCatalog);
   updateCollectionProgress();
@@ -833,6 +839,7 @@ function showStart() {
   elements.startScreen.hidden = false;
   elements.gameScreen.hidden = true;
   elements.collectionScreen.hidden = true;
+  openCollectionId = null;
   elements.catGrid.replaceChildren();
   applyPendingCatCatalog();
   updateCollectionProgress();
@@ -859,6 +866,7 @@ function showCollection(returnScreen = "start") {
   if (elements.dialog.open) elements.dialog.close();
   applyPendingCatCatalog();
   collectionReturnScreen = returnScreen;
+  openCollectionId = null;
   catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
   elements.startScreen.hidden = true;
   elements.gameScreen.hidden = true;
@@ -867,6 +875,11 @@ function showCollection(returnScreen = "start") {
 }
 
 function closeCollection() {
+  if (openCollectionId) {
+    openCollectionId = null;
+    renderCollection();
+    return;
+  }
   elements.catGrid.replaceChildren();
   if (collectionReturnScreen === "game" && activeCat) {
     elements.startScreen.hidden = true;
@@ -886,84 +899,134 @@ function updateCollectionProgress() {
   elements.startButton.textContent = discoveredCount === catCatalog.length ? "Meine Katzen" : "Losspielen";
 }
 
+function createCatCard(cat) {
+  const card = document.createElement(cat.isDiscovered ? "article" : "button");
+  if (!cat.isDiscovered) {
+    card.type = "button";
+    card.disabled = collectionSelectionBusy;
+    card.addEventListener("click", () => selectCatForPlay(cat.id));
+  }
+  card.className = `cat-card${cat.isDiscovered ? " discovered" : " covered"}${
+    cat.isActive ? " active" : ""
+  }`;
+  card.setAttribute(
+    "aria-label",
+    cat.isDiscovered
+      ? `${cat.name}, entdeckt`
+      : cat.isActive
+        ? `${cat.name}, ausgewählt, ${cat.revealProgress} von 64 freigelegt`
+        : `${cat.name} auswählen und freispielen`,
+  );
+
+  const portrait = document.createElement("div");
+  portrait.className = "cat-portrait";
+  if (cat.isDiscovered) {
+    const imageSource = catImageSource(cat, { thumbnail: true });
+    if (imageSource) {
+      const image = document.createElement("img");
+      image.src = imageSource;
+      image.alt = cat.name;
+      image.loading = "lazy";
+      image.decoding = "async";
+      portrait.append(image);
+    } else {
+      const offlineCover = document.createElement("span");
+      offlineCover.className = "cat-card-cover";
+      offlineCover.textContent = "☁️";
+      offlineCover.setAttribute("aria-label", "Bild muss erneut geladen werden");
+      portrait.append(offlineCover);
+    }
+
+    const check = document.createElement("span");
+    check.className = "cat-check";
+    check.textContent = "✓";
+    check.setAttribute("aria-hidden", "true");
+    portrait.append(check);
+  } else {
+    const cover = document.createElement("span");
+    cover.className = "cat-card-cover";
+    cover.textContent = cat.isActive ? "🐾" : "🐱";
+    cover.setAttribute("aria-hidden", "true");
+    portrait.append(cover);
+  }
+
+  const name = document.createElement("h2");
+  name.textContent = cat.name;
+  card.append(portrait, name);
+
+  if (!cat.isDiscovered) {
+    const status = document.createElement("p");
+    if (cat.isActive) {
+      status.textContent =
+        cat.isDownloadable && catAssetStore.getDownloadState(cat) !== "downloaded"
+          ? "Antippen zum Laden"
+          : `${cat.revealProgress}/64 freigelegt · spielen`;
+    } else {
+      status.textContent =
+        cat.revealProgress > 0
+          ? `${cat.revealProgress}/64 freigelegt · weiterspielen`
+          : "Antippen zum Freispielen";
+    }
+    card.append(status);
+  }
+  return card;
+}
+
+function createDailyFolder(folder) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `collection-folder${folder.hasActiveCat ? " active" : ""}`;
+  button.setAttribute(
+    "aria-label",
+    `${folder.name} öffnen, ${folder.discoveredCount} von ${folder.cats.length} Katzen entdeckt`,
+  );
+  button.addEventListener("click", () => {
+    openCollectionId = folder.id;
+    renderCollection();
+  });
+
+  const icon = document.createElement("span");
+  icon.className = "collection-folder-icon";
+  icon.textContent = "🐾";
+  icon.setAttribute("aria-hidden", "true");
+  const title = document.createElement("h2");
+  try {
+    title.textContent = new Intl.DateTimeFormat("de-AT", {
+      day: "numeric",
+      month: "short",
+      timeZone: folder.timeZone ?? "Europe/Vienna",
+    }).format(new Date(folder.releaseDate));
+  } catch {
+    title.textContent = folder.name;
+  }
+  const status = document.createElement("p");
+  status.textContent = `${folder.discoveredCount}/${folder.cats.length} entdeckt`;
+  button.append(icon, title, status);
+  return button;
+}
+
 function renderCollection() {
   const cats = getCatCollection(catProgress, catCatalog);
+  const view = buildCatCollectionView(cats, catContentCatalog.collections);
   updateCollectionProgress();
   elements.catGrid.replaceChildren();
 
-  for (const cat of cats) {
-    const card = document.createElement(cat.isDiscovered ? "article" : "button");
-    if (!cat.isDiscovered) {
-      card.type = "button";
-      card.disabled = collectionSelectionBusy;
-      card.addEventListener("click", () => selectCatForPlay(cat.id));
-    }
-    card.className = `cat-card${cat.isDiscovered ? " discovered" : " covered"}${
-      cat.isActive ? " active" : ""
-    }`;
-    card.setAttribute(
-      "aria-label",
-      cat.isDiscovered
-        ? `${cat.name}, entdeckt`
-        : cat.isActive
-          ? `${cat.name}, ausgewählt, ${cat.revealProgress} von 64 freigelegt`
-          : `${cat.name} auswählen und freispielen`,
-    );
-
-    const portrait = document.createElement("div");
-    portrait.className = "cat-portrait";
-    if (cat.isDiscovered) {
-      const imageSource = catImageSource(cat, { thumbnail: true });
-      if (imageSource) {
-        const image = document.createElement("img");
-        image.src = imageSource;
-        image.alt = cat.name;
-        image.loading = "lazy";
-        image.decoding = "async";
-        portrait.append(image);
-      } else {
-        const offlineCover = document.createElement("span");
-        offlineCover.className = "cat-card-cover";
-        offlineCover.textContent = "☁️";
-        offlineCover.setAttribute("aria-label", "Bild muss erneut geladen werden");
-        portrait.append(offlineCover);
-      }
-
-      const check = document.createElement("span");
-      check.className = "cat-check";
-      check.textContent = "✓";
-      check.setAttribute("aria-hidden", "true");
-      portrait.append(check);
-    } else {
-      const cover = document.createElement("span");
-      cover.className = "cat-card-cover";
-      cover.textContent = cat.isActive ? "🐾" : "🐱";
-      cover.setAttribute("aria-hidden", "true");
-      portrait.append(cover);
-    }
-
-    const name = document.createElement("h2");
-    name.textContent = cat.name;
-    card.append(portrait, name);
-
-    if (!cat.isDiscovered) {
-      const status = document.createElement("p");
-      if (cat.isActive) {
-        status.textContent =
-          cat.isDownloadable && catAssetStore.getDownloadState(cat) !== "downloaded"
-            ? "Antippen zum Laden"
-            : `${cat.revealProgress}/64 freigelegt · spielen`;
-      } else {
-        status.textContent =
-          cat.revealProgress > 0
-            ? `${cat.revealProgress}/64 freigelegt · weiterspielen`
-            : "Antippen zum Freispielen";
-      }
-      card.append(status);
-    }
-
-    elements.catGrid.append(card);
+  const openFolder = view.dailyFolders.find((folder) => folder.id === openCollectionId);
+  if (openFolder) {
+    elements.collectionBackButton.textContent = "‹ Alle Sets";
+    elements.collectionTitle.textContent = openFolder.name;
+    elements.collectionProgress.textContent = `${openFolder.discoveredCount} von ${openFolder.cats.length} Katzen entdeckt`;
+    elements.catGrid.append(...openFolder.cats.map(createCatCard));
+    return;
   }
+
+  openCollectionId = null;
+  elements.collectionBackButton.textContent = "‹ Zurück";
+  elements.collectionTitle.textContent = "Meine Katzen";
+  elements.catGrid.append(
+    ...view.dailyFolders.map(createDailyFolder),
+    ...view.looseCats.map(createCatCard),
+  );
 }
 
 async function selectCatForPlay(catId) {
