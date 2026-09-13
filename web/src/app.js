@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=36";
+} from "./game-engine.js?v=37";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,14 +13,14 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=36";
+} from "./cat-progress.js?v=37";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=36";
-import { CatAssetStore } from "./cat-asset-store.js?v=36";
-import { buildCatCollectionView } from "./cat-collection-view.js?v=36";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=36";
+} from "./cat-catalog-repository.js?v=37";
+import { CatAssetStore } from "./cat-asset-store.js?v=37";
+import { buildCatCollectionView } from "./cat-collection-view.js?v=37";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=37";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -818,12 +818,16 @@ async function prepareCatForPlay(cat) {
   const download = await catAssetStore.ensureDownloaded(cat);
   elements.startButton.disabled = false;
   elements.playAgainButton.disabled = false;
-  if (download.status !== "downloaded" || !download.url) {
+  if (!download.url) {
     setContentStatus(`${cat.name} konnte nicht geladen werden. Bitte Internetverbindung prüfen.`);
     return false;
   }
   catRuntimeImageUrls.set(catAssetKey(cat), download.url);
-  setContentStatus(`${cat.name} ist geladen und bleibt offline verfügbar.`);
+  setContentStatus(
+    download.status === "downloaded"
+      ? `${cat.name} ist geladen und bleibt offline verfügbar.`
+      : `${cat.name} ist geladen. Zum erneuten Laden wird Internet benötigt.`,
+  );
   return true;
 }
 

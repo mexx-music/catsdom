@@ -1,4 +1,4 @@
-import { MAX_CAT_DOWNLOAD_BYTES, SUPPORTED_CAT_IMAGE_TYPES } from "./cat-content.js?v=36";
+import { MAX_CAT_DOWNLOAD_BYTES, SUPPORTED_CAT_IMAGE_TYPES } from "./cat-content.js?v=37";
 
 export const CAT_ASSET_CACHE_NAME = "catsdom-downloaded-cats-v1";
 export const CAT_ASSET_STATE_STORAGE_KEY = "catsdom.downloadedCatState.v1";
@@ -99,7 +99,7 @@ export class CatAssetStore {
   }
 
   async download(cat) {
-    if (!this.fetchImpl || !this.cacheStorage) {
+    if (!this.fetchImpl) {
       this.writeState(cat, "failed");
       return { status: "failed", url: null };
     }
@@ -122,17 +122,30 @@ export class CatAssetStore {
       if (cat.downloadSize && blob.size > Math.max(cat.downloadSize * 1.15, cat.downloadSize + 4096)) {
         throw new Error("unexpected image size");
       }
+      let canPersistOffline = Boolean(this.cacheStorage);
       if (cat.checksum) {
         const actualChecksum = await sha256Hex(blob, this.cryptoImpl);
-        if (!actualChecksum || actualChecksum !== cat.checksum) throw new Error("checksum mismatch");
+        if (actualChecksum && actualChecksum !== cat.checksum) throw new Error("checksum mismatch");
+        if (!actualChecksum) canPersistOffline = false;
       }
 
-      const cache = await this.cacheStorage.open(CAT_ASSET_CACHE_NAME);
-      await cache.put(this.cacheKey(cat), response);
-      this.writeState(cat, "downloaded");
-      const url = this.createObjectUrl ? this.createObjectUrl(blob) : null;
+      const url = this.createObjectUrl ? this.createObjectUrl(blob) : cat.imageUrl;
       if (url) this.objectUrls.set(this.assetKey(cat), url);
-      return { status: "downloaded", url };
+      if (!url) throw new Error("image URL unavailable");
+
+      if (canPersistOffline) {
+        try {
+          const cache = await this.cacheStorage.open(CAT_ASSET_CACHE_NAME);
+          await cache.put(this.cacheKey(cat), response);
+          this.writeState(cat, "downloaded");
+          return { status: "downloaded", url };
+        } catch {
+          // The image remains playable online even if iOS rejects the cache write.
+        }
+      }
+
+      this.writeState(cat, "onlineOnly");
+      return { status: "online", url };
     } catch {
       this.writeState(cat, "failed");
       return { status: "failed", url: null };

@@ -118,3 +118,34 @@ test("unsupported downloaded content fails safely", async () => {
   assert.equal(result.status, "failed");
   assert.equal(store.getDownloadState(downloadableCat()), "failed");
 });
+
+test("a valid cat stays playable when the device cannot write to its offline cache", async () => {
+  const storage = memoryStorage();
+  const store = new CatAssetStore({
+    storage,
+    cacheStorage: { open: async () => { throw new Error("cache unavailable"); } },
+    fetchImpl: async () => imageResponse(),
+    createObjectUrl: () => "blob:online-cat",
+  });
+
+  const result = await store.ensureDownloaded(downloadableCat());
+
+  assert.equal(result.status, "online");
+  assert.equal(result.url, "blob:online-cat");
+  assert.equal(store.getDownloadState(downloadableCat()), "notDownloaded");
+});
+
+test("a browser without checksum support can still play a same-session cat online", async () => {
+  const store = new CatAssetStore({
+    storage: memoryStorage(),
+    cacheStorage: memoryCacheStorage(),
+    fetchImpl: async () => imageResponse(),
+    cryptoImpl: null,
+    createObjectUrl: () => "blob:unverified-online-cat",
+  });
+
+  const result = await store.ensureDownloaded(downloadableCat({ checksum: "a".repeat(64) }));
+
+  assert.equal(result.status, "online");
+  assert.equal(result.url, "blob:unverified-online-cat");
+});
