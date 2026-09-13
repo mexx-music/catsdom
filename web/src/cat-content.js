@@ -22,7 +22,7 @@ const starterNames = ["Luna", "Milo", "Nala", "Leo", "Coco", "Mia", "Loki", "Bel
 export const BUNDLED_CATALOG = Object.freeze({
   catalogVersion: 1,
   collections: Object.freeze([
-    Object.freeze({ id: "starter", name: "Starter Cats", version: 1, kind: "standard" }),
+    Object.freeze({ id: "starter", name: "Starter-Set", version: 1, kind: "standard" }),
   ]),
   cats: Object.freeze(
     starterNames.map((name, index) => {

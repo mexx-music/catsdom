@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=35";
+} from "./game-engine.js?v=36";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,14 +13,14 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=35";
+} from "./cat-progress.js?v=36";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=35";
-import { CatAssetStore } from "./cat-asset-store.js?v=35";
-import { buildCatCollectionView } from "./cat-collection-view.js?v=35";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=35";
+} from "./cat-catalog-repository.js?v=36";
+import { CatAssetStore } from "./cat-asset-store.js?v=36";
+import { buildCatCollectionView } from "./cat-collection-view.js?v=36";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=36";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -972,7 +972,7 @@ function createCatCard(cat) {
   return card;
 }
 
-function createDailyFolder(folder) {
+function createCollectionFolder(folder) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `collection-folder${folder.hasActiveCat ? " active" : ""}`;
@@ -987,16 +987,20 @@ function createDailyFolder(folder) {
 
   const icon = document.createElement("span");
   icon.className = "collection-folder-icon";
-  icon.textContent = "🐾";
+  icon.textContent = folder.kind === "daily" ? "🐾" : "🐱";
   icon.setAttribute("aria-hidden", "true");
   const title = document.createElement("h2");
-  try {
-    title.textContent = new Intl.DateTimeFormat("de-AT", {
-      day: "numeric",
-      month: "short",
-      timeZone: folder.timeZone ?? "Europe/Vienna",
-    }).format(new Date(folder.releaseDate));
-  } catch {
+  if (folder.kind === "daily") {
+    try {
+      title.textContent = new Intl.DateTimeFormat("de-AT", {
+        day: "numeric",
+        month: "short",
+        timeZone: folder.timeZone ?? "Europe/Vienna",
+      }).format(new Date(folder.releaseDate));
+    } catch {
+      title.textContent = folder.name;
+    }
+  } else {
     title.textContent = folder.name;
   }
   const status = document.createElement("p");
@@ -1011,7 +1015,7 @@ function renderCollection() {
   updateCollectionProgress();
   elements.catGrid.replaceChildren();
 
-  const openFolder = view.dailyFolders.find((folder) => folder.id === openCollectionId);
+  const openFolder = view.collectionFolders.find((folder) => folder.id === openCollectionId);
   if (openFolder) {
     elements.collectionBackButton.textContent = "‹ Alle Sets";
     elements.collectionTitle.textContent = openFolder.name;
@@ -1024,7 +1028,7 @@ function renderCollection() {
   elements.collectionBackButton.textContent = "‹ Zurück";
   elements.collectionTitle.textContent = "Meine Katzen";
   elements.catGrid.append(
-    ...view.dailyFolders.map(createDailyFolder),
+    ...view.collectionFolders.map(createCollectionFolder),
     ...view.looseCats.map(createCatCard),
   );
 }
