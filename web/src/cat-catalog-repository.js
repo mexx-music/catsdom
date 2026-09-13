@@ -2,9 +2,9 @@ import {
   BUNDLED_CATALOG,
   mergeCatCatalogs,
   validateRemoteCatalog,
-} from "./cat-content.js?v=37";
+} from "./cat-content.js?v=38";
 
-export { BUNDLED_CATALOG } from "./cat-content.js?v=37";
+export { BUNDLED_CATALOG } from "./cat-content.js?v=38";
 
 export const CAT_CATALOG_CACHE_KEY = "catsdom.remoteCatalog.v1";
 export const CAT_CATALOG_SYNC_KEY = "catsdom.remoteCatalogLastSync.v2";

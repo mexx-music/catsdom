@@ -4,7 +4,7 @@ import {
   BOARD_SIZE,
   GameEngine,
   PAW_BOMB,
-} from "./game-engine.js?v=37";
+} from "./game-engine.js?v=38";
 import {
   discoverActiveCat,
   getActiveCat,
@@ -13,14 +13,14 @@ import {
   revealCatTiles,
   saveCatProgress,
   selectActiveCat,
-} from "./cat-progress.js?v=37";
+} from "./cat-progress.js?v=38";
 import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
-} from "./cat-catalog-repository.js?v=37";
-import { CatAssetStore } from "./cat-asset-store.js?v=37";
-import { buildCatCollectionView } from "./cat-collection-view.js?v=37";
-import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=37";
+} from "./cat-catalog-repository.js?v=38";
+import { CatAssetStore } from "./cat-asset-store.js?v=38";
+import { buildCatCollectionView } from "./cat-collection-view.js?v=38";
+import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=38";
 
 const TILE_SYMBOLS = {
   cat: { symbol: "🐱", name: "Katze" },
@@ -1699,7 +1699,7 @@ window.addEventListener("appinstalled", () => {
 });
 
 window.addEventListener("online", () => {
-  contentReady = syncCatContent();
+  contentReady = syncCatContent({ force: true });
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -1718,4 +1718,4 @@ if ("serviceWorker" in navigator) {
 
 updateCollectionProgress();
 render();
-contentReady = syncCatContent();
+contentReady = syncCatContent({ force: true });
