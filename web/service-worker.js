@@ -1,9 +1,9 @@
-const CACHE_NAME = "catsdom-pwa-v35";
+const CACHE_NAME = "catsdom-pwa-v36";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css?v=38",
-  "./src/app.js?v=38",
+  "./src/app.js?v=39",
   "./src/game-engine.js?v=38",
   "./src/cat-progress.js?v=38",
   "./src/cat-content.js?v=38",

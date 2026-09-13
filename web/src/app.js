@@ -866,11 +866,11 @@ async function showGame() {
   restartGame();
 }
 
-function showCollection(returnScreen = "start") {
+function showCollection(returnScreen = "start", { preserveOpenFolder = false } = {}) {
   if (elements.dialog.open) elements.dialog.close();
   applyPendingCatCatalog();
   collectionReturnScreen = returnScreen;
-  openCollectionId = null;
+  if (!preserveOpenFolder) openCollectionId = null;
   catProgress = loadCatProgress(globalThis.localStorage, catCatalog);
   elements.startScreen.hidden = true;
   elements.gameScreen.hidden = true;
@@ -1649,13 +1649,13 @@ elements.startCollectionButton.addEventListener("click", async () => {
   showCollection("start");
 });
 elements.gameCollectionButton.addEventListener("click", () => {
-  if (!busy) showCollection("game");
+  if (!busy) showCollection("game", { preserveOpenFolder: true });
 });
 elements.collectionBackButton.addEventListener("click", closeCollection);
 elements.backButton.addEventListener("click", showStart);
 elements.restartButton.addEventListener("click", restartGame);
 elements.playAgainButton.addEventListener("click", async () => {
-  showCollection("start");
+  showCollection("start", { preserveOpenFolder: true });
 });
 elements.dialogHomeButton.addEventListener("click", showStart);
 
