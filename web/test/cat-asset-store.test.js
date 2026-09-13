@@ -104,6 +104,31 @@ test("a newer asset version requires a new download without touching cat identit
   assert.equal(fetchCount, 2);
 });
 
+test("a resumed app rebuilds a fresh playable URL from the offline cat cache", async () => {
+  const cacheStorage = memoryCacheStorage();
+  let fetchCount = 0;
+  let objectUrlCount = 0;
+  const revokedUrls = [];
+  const store = new CatAssetStore({
+    storage: memoryStorage(),
+    cacheStorage,
+    fetchImpl: async () => {
+      fetchCount += 1;
+      return imageResponse();
+    },
+    createObjectUrl: () => `blob:cat-${++objectUrlCount}`,
+    revokeObjectUrl: (url) => revokedUrls.push(url),
+  });
+
+  const first = await store.ensureDownloaded(downloadableCat());
+  const restored = await store.refreshPlayableUrl(downloadableCat());
+
+  assert.equal(first.url, "blob:cat-1");
+  assert.equal(restored.url, "blob:cat-2");
+  assert.equal(fetchCount, 1);
+  assert.deepEqual(revokedUrls, ["blob:cat-1"]);
+});
+
 test("unsupported downloaded content fails safely", async () => {
   const store = new CatAssetStore({
     storage: memoryStorage(),

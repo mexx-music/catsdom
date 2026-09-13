@@ -18,7 +18,7 @@ import {
   BUNDLED_CATALOG,
   CatCatalogRepository,
 } from "./cat-catalog-repository.js?v=38";
-import { CatAssetStore } from "./cat-asset-store.js?v=38";
+import { CatAssetStore } from "./cat-asset-store.js?v=40";
 import { buildCatCollectionView } from "./cat-collection-view.js?v=38";
 import { MOTION_TUNING, fallDurationForDistance } from "./motion-tuning.js?v=38";
 
@@ -108,6 +108,7 @@ let boardObjectPhoto = null;
 let boardObjectCoverPieces = [];
 let activeFlowRecovery = null;
 let flowWatchdogId = null;
+let activeCatImageRestorePromise = null;
 const transientEffects = new Set();
 
 const sleep = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -829,6 +830,35 @@ async function prepareCatForPlay(cat) {
       : `${cat.name} ist geladen. Zum erneuten Laden wird Internet benötigt.`,
   );
   return true;
+}
+
+async function restoreActiveCatImage() {
+  if (elements.gameScreen.hidden || !activeCat) return false;
+  if (activeCatImageRestorePromise) return activeCatImageRestorePromise;
+
+  const cat = activeCat;
+  const assetKey = catAssetKey(cat);
+  const restorePromise = (async () => {
+    const restored = cat.isDownloadable
+      ? await catAssetStore.refreshPlayableUrl(cat)
+      : { status: "downloaded", url: cat.imageUrl };
+    if (!restored.url || elements.gameScreen.hidden || !activeCat || catAssetKey(activeCat) !== assetKey) {
+      return false;
+    }
+
+    catRuntimeImageUrls.set(assetKey, restored.url);
+    if (boardObjectPhoto) {
+      boardObjectPhoto.dataset.assetKey = "";
+      updateBoardObject();
+    }
+    return true;
+  })();
+  activeCatImageRestorePromise = restorePromise;
+  try {
+    return await restorePromise;
+  } finally {
+    if (activeCatImageRestorePromise === restorePromise) activeCatImageRestorePromise = null;
+  }
 }
 
 function showStart() {
@@ -1705,7 +1735,12 @@ window.addEventListener("online", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   if (!elements.gameScreen.hidden && busy && !recoverInterruptedFlow()) recoverInteractionError();
+  restoreActiveCatImage().catch(() => undefined);
   contentReady = syncCatContent();
+});
+
+window.addEventListener("pageshow", () => {
+  restoreActiveCatImage().catch(() => undefined);
 });
 
 if ("serviceWorker" in navigator) {

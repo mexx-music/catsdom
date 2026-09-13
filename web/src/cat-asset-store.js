@@ -25,6 +25,7 @@ export class CatAssetStore {
     fetchImpl = globalThis.fetch?.bind(globalThis),
     cryptoImpl = globalThis.crypto,
     createObjectUrl = globalThis.URL?.createObjectURL?.bind(globalThis.URL),
+    revokeObjectUrl = globalThis.URL?.revokeObjectURL?.bind(globalThis.URL),
     baseUrl = globalThis.document?.baseURI ?? "https://catsdom.invalid/",
     now = () => new Date(),
   } = {}) {
@@ -33,6 +34,7 @@ export class CatAssetStore {
     this.fetchImpl = fetchImpl;
     this.cryptoImpl = cryptoImpl;
     this.createObjectUrl = createObjectUrl;
+    this.revokeObjectUrl = revokeObjectUrl;
     this.baseUrl = baseUrl;
     this.now = now;
     this.pending = new Map();
@@ -96,6 +98,25 @@ export class CatAssetStore {
     const download = this.download(cat).finally(() => this.pending.delete(assetKey));
     this.pending.set(assetKey, download);
     return download;
+  }
+
+  async refreshPlayableUrl(cat) {
+    if (!cat.isDownloadable) return { status: "downloaded", url: cat.imageUrl };
+    const assetKey = this.assetKey(cat);
+    const previousUrl = this.objectUrls.get(assetKey);
+    this.objectUrls.delete(assetKey);
+
+    const refreshed = await this.ensureDownloaded(cat);
+    if (refreshed.url) {
+      if (previousUrl && previousUrl !== refreshed.url) this.revokeObjectUrl?.(previousUrl);
+      return refreshed;
+    }
+
+    if (previousUrl) {
+      this.objectUrls.set(assetKey, previousUrl);
+      return { status: "memory", url: previousUrl };
+    }
+    return refreshed;
   }
 
   async download(cat) {
